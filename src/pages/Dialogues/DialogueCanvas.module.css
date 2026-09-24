@@ -1,0 +1,165 @@
+/*
+ * React Flow reads its colors from --xy-* variables (falling back to its own "-default" values),
+ * so setting them here themes the whole canvas with GameAtlas tokens.
+ */
+.canvas {
+  --xy-background-color: var(--color-canvas-bg);
+  --xy-background-pattern-dots-color: var(--color-canvas-dot);
+  --xy-edge-stroke: var(--color-edge);
+  --xy-edge-stroke-selected: var(--color-accent-text);
+  --xy-edge-stroke-width: 1.5;
+  --xy-connectionline-stroke: var(--color-accent-text);
+  --xy-connectionline-stroke-width: 1.5;
+  --xy-handle-background-color: var(--color-bg-input);
+  --xy-handle-border-color: var(--color-border-strong);
+  --xy-minimap-background-color: var(--glass-bg);
+  --xy-minimap-mask-background-color: rgb(0 0 0 / 0.35);
+  --xy-minimap-mask-stroke-color: var(--color-accent-text);
+  --xy-minimap-node-background-color: var(--color-border-strong);
+  --xy-minimap-node-stroke-color: transparent;
+  --xy-controls-button-background-color: transparent;
+  --xy-controls-button-background-color-hover: var(--color-bg-raised);
+  --xy-controls-button-color: var(--color-text-muted);
+  --xy-controls-button-color-hover: var(--color-text);
+  --xy-controls-button-border-color: var(--glass-border);
+  --xy-controls-box-shadow: var(--shadow-float);
+  --xy-selection-background-color: var(--color-accent-soft);
+  --xy-selection-border: 1px solid var(--color-accent-text);
+  --xy-attribution-background-color: transparent;
+
+  position: relative;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Glass controls and minimap */
+.canvas :global(.react-flow__controls),
+.canvas :global(.react-flow__minimap) {
+  overflow: hidden;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+
+.canvas :global(.react-flow__controls) {
+  background: var(--glass-bg);
+}
+
+.canvas :global(.react-flow__attribution a) {
+  color: var(--color-text-subtle);
+}
+
+/* Toolbar: add buttons on top, then the hint and the animation toggle */
+.toolbar {
+  display: flex;
+  flex-direction: column;
+  max-width: calc(100% - 2 * var(--space-3));
+  padding: 2px var(--space-2) var(--space-1) var(--space-3);
+  border-radius: var(--radius-md);
+}
+
+.toolbarRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+}
+
+.toolbarFooter {
+  gap: var(--space-2);
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--glass-border);
+}
+
+.toolbarLabel {
+  margin-right: var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+.hint {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
+}
+
+.toggleLabel {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+/* "Add next step" menu (rendered into document.body) */
+.menu {
+  position: fixed;
+  z-index: var(--z-dropdown);
+  width: 260px;
+  padding: var(--space-1);
+  border-radius: var(--radius-md);
+  animation: menu-in var(--duration-fast) var(--ease);
+}
+
+.menuTitle {
+  padding: var(--space-1) var(--space-2) var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+.menuItem {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.menuItem:hover,
+.menuItem:focus-visible {
+  background: var(--color-accent-soft);
+}
+
+.menuItem:focus-visible {
+  outline-offset: -2px;
+}
+
+.menuItem svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--color-text-muted);
+}
+
+.menuText {
+  display: flex;
+  flex-direction: column;
+}
+
+.menuLabel {
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.menuDescription {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}

@@ -1,0 +1,178 @@
+.node {
+  width: 260px;
+  background: var(--color-bg-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font-size: var(--text-base);
+}
+
+.selected {
+  outline: 2px solid var(--color-accent-text);
+  outline-offset: 2px;
+}
+
+.invalid {
+  border-color: var(--color-error-text);
+}
+
+/* Header strip colors come from tokens (all neutral until color coding is chosen) */
+.start {
+  --node-color: var(--color-node-start);
+  width: 150px;
+}
+
+.line {
+  --node-color: var(--color-node-line);
+}
+
+.choice {
+  --node-color: var(--color-node-choice);
+}
+
+.condition {
+  --node-color: var(--color-node-condition);
+}
+
+.action {
+  --node-color: var(--color-node-action);
+}
+
+.end {
+  --node-color: var(--color-node-end);
+  width: 180px;
+}
+
+/* The header is where nodes are dragged from */
+.header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 28px;
+  padding: 0 var(--space-1) 0 var(--space-3);
+  background: var(--node-color);
+  border-bottom: 1px solid var(--color-border);
+  border-radius: calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px) 0 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: grab;
+}
+
+.header:last-child {
+  border-bottom: none;
+  border-radius: calc(var(--radius-md) - 1px);
+}
+
+.title {
+  flex: 1;
+}
+
+.remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.remove:hover {
+  background: var(--color-bg-raised);
+  color: var(--color-text);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  cursor: default;
+}
+
+.body > button {
+  align-self: flex-start;
+}
+
+.body textarea {
+  min-height: 64px;
+}
+
+.fieldLabel {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+/* A row with its own output handle: it reaches the node's right edge so the handle sits on the border */
+.outputRow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-right: calc(-1 * var(--space-3));
+  padding-right: var(--space-3);
+}
+
+.branch {
+  justify-content: flex-end;
+  min-height: 24px;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.smallButton {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+}
+
+.endText {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.problems {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--color-border);
+  list-style: none;
+}
+
+.problems li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--color-error-text);
+}
+
+.problems svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* Two classes so these win over React Flow's own handle styles */
+.node .handle {
+  width: 10px;
+  height: 10px;
+  background: var(--color-bg-input);
+  border: 1px solid var(--color-border-strong);
+  transition:
+    background-color var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease);
+}
+
+.node .handle:hover {
+  background: var(--color-accent-text);
+  border-color: var(--color-accent-text);
+}
