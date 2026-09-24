@@ -1,4 +1,3 @@
-import { CircleAlert, CircleCheck } from 'lucide-react'
 import { plural } from '../../utils/plural.js'
 
 /**
@@ -7,30 +6,24 @@ import { plural } from '../../utils/plural.js'
  * hiddenCount: problems not shown yet (the user hasn't touched those inputs or tried to save)
  * onSelect(problem): optional; replaces the default "focus the input" (e.g. to jump to a graph node)
  */
-function ValidationSummary({ problems, hiddenCount = 0, onSelect }) {
+function ValidationSummary({ problems, hiddenCount, onSelect }) {
   if (problems.length === 0) {
     return hiddenCount > 0 ? (
-      <p className="checks-pending">Some properties still need values before this can be saved.</p>
+      <p className="muted">Some properties still need values before this can be saved.</p>
     ) : (
-      <p className="checks-ok">
-        <CircleCheck size={16} strokeWidth={1.75} aria-hidden="true" />
-        No problems
-      </p>
+      <p className="checks-ok">No problems</p>
     )
   }
 
   return (
-    <div className="checks">
-      <p className="checks-title">
-        <CircleAlert size={16} strokeWidth={1.75} aria-hidden="true" />
-        {plural(problems.length, 'problem')}
-      </p>
+    <div>
+      <p className="checks-title">{plural(problems.length, 'problem')}</p>
       <ul className="checks-list">
         {problems.map((problem) => (
           <li key={problem.id}>
             <button
               type="button"
-              className="checks-link"
+              className="link-button"
               onClick={() => (onSelect ? onSelect(problem) : document.getElementById(problem.id)?.focus())}
             >
               {problem.label}

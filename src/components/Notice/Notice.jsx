@@ -1,4 +1,3 @@
-import { Info, TriangleAlert } from 'lucide-react'
 import { cx } from '../../utils/cx.js'
 
 /**
@@ -6,14 +5,8 @@ import { cx } from '../../utils/cx.js'
  * tone: 'info' (default) or 'warning'. Anything richer than a sentence (a list, a link)
  * can be passed as children.
  */
-function Notice({ tone = 'info', children, ...props }) {
-  const Icon = tone === 'warning' ? TriangleAlert : Info
-  return (
-    <div className={cx('notice', tone === 'warning' && 'notice-warning')} {...props}>
-      <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
-      <div>{children}</div>
-    </div>
-  )
+function Notice({ tone = 'info', children }) {
+  return <div className={cx('notice', tone === 'warning' && 'notice-warning')}>{children}</div>
 }
 
 /**

@@ -1,31 +1,25 @@
 import { Link } from 'react-router'
-import { cx } from '../../utils/cx.js'
 
 /**
- * A list of links, each with an icon, a label and an optional hint and meta text.
- * items: [{ id, icon, label, hint?, tone?, meta?, to }]
- *   tone: 'error' | 'warning' colors the hint (e.g. "3 problems")
- *   meta: short text on the right (e.g. a date)
+ * A list of links, each with an icon, a label and an optional hint under the label.
+ * items: [{ icon, label, hint?, to }]. Each `to` must be different (it's also the React key).
  * emptyMessage: shown when there are no items
  */
 function LinkList({ items, emptyMessage }) {
-  if (items.length === 0) return emptyMessage ? <p className="links-empty">{emptyMessage}</p> : null
+  if (items.length === 0) return <p className="muted">{emptyMessage}</p>
 
   return (
-    <ul className="links">
+    <div>
       {items.map((item) => (
-        <li key={item.id}>
-          <Link to={item.to} className="link-item">
-            <item.icon size={16} strokeWidth={1.75} aria-hidden="true" />
-            <span className="link-text">
-              <span className="truncate">{item.label}</span>
-              {item.hint && <span className={cx('link-hint', item.tone && `tone-${item.tone}`)}>{item.hint}</span>}
-            </span>
-            {item.meta && <span className="link-meta">{item.meta}</span>}
-          </Link>
-        </li>
+        <Link key={item.to} to={item.to} className="link-item">
+          <item.icon size={16} />
+          <span>
+            {item.label}
+            {item.hint && <span className="link-hint">{item.hint}</span>}
+          </span>
+        </Link>
       ))}
-    </ul>
+    </div>
   )
 }
 

@@ -1,18 +1,14 @@
 /*
- * GameAtlas global stylesheet. Every shared component is styled here instead of in its own
- * CSS Module, so each look is written once and reused by name. Values come from tokens.css.
+ * GameAtlas global stylesheet: the reset, a few utilities, and every shared component's look.
+ * Values come from tokens.css.
  *
- * How to read it: §3 defines the shapes (rows, stacks, gaps) that most components share, and
- * each component's own rule below sets only what makes it different. Naming is `.thing`,
- * `.thing-part` and `.is-state`. Page layout still lives in each page's .module.css, which
- * loads after this file and so wins on equal specificity.
- *
- *   1 Document & reset      4 Shell & navigation   7 Select & tables
- *   2 Background glows      5 Sections & buttons   8 Lists, values, JSON
- *   3 Shapes & text         6 Form controls        9 Floating layers
+ * Each component has one block below with all of its rules, so everything that styles a class
+ * is in one place. Naming is `.thing`, `.thing-part` and `.is-state`. Page layout that only one
+ * page needs lives in that page's .module.css, which loads after this file and so wins on
+ * equal specificity.
  */
 
-/* ------------------------------------------------------------ 1. Document & reset */
+/* ============================================================ Reset */
 
 *,
 *::before,
@@ -27,13 +23,12 @@ body {
 }
 
 body {
+  min-width: 1024px;
   font-family: var(--font-ui);
   font-size: var(--text-base);
   line-height: var(--leading);
   color: var(--color-text);
   background: var(--color-bg-app);
-  -webkit-font-smoothing: antialiased;
-  min-width: 1024px;
 }
 
 h1,
@@ -59,7 +54,6 @@ a {
 }
 
 code,
-kbd,
 pre {
   font-family: var(--font-mono);
   font-size: var(--text-sm);
@@ -73,23 +67,16 @@ textarea {
   color: inherit;
 }
 
-/* Retro focus ring: hard outline, no glow */
-:focus-visible {
-  outline: 2px solid var(--color-accent-text);
-  outline-offset: 2px;
+hr {
+  width: 100%;
+  margin: var(--space-1) 0;
+  border: none;
+  border-top: 1px solid var(--color-border);
 }
-
-/* Thin dark scrollbars */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-border-strong) transparent;
-}
-
-/* ------------------------------------------------------------ 2. Background glows */
 
 /*
- * Overlapping, offset ellipses, rotated and blurred so no edges or symmetry show.
- * Fixed, so content scrolling over the glass reveals the translucency.
+ * Background glows: overlapping, offset ellipses, rotated and blurred so no edges or symmetry
+ * show. Fixed, so content scrolling over the glass reveals the translucency.
  */
 body::before {
   content: '';
@@ -108,357 +95,58 @@ body::before {
   transform: rotate(-8deg);
 }
 
-/* ------------------------------------------------------------ 3. Shapes & text */
+/* ============================================================ Utilities (used directly in markup) */
 
-/* Rows: a line of items sharing a baseline of centre alignment */
-.row,
-.shell-brand,
-.shell-bar,
-.shell-status,
-.nav-title,
-.nav-item,
-.crumbs,
-.crumb-item,
-.section-head,
-.section-foot,
-.select-search,
-.select-option,
-.vector,
-.vector-axis,
-.prop-label,
-.checks-ok,
-.checks-title,
-.drawer-head,
-.drawer-foot,
-.dialog-actions,
-.toast-close,
-.json-leaf,
-.json-branch,
-.field-error,
-.link-item,
-.list-input-item,
-.toast {
+/* A line of items, centred vertically */
+.row {
   display: flex;
   align-items: center;
-}
-
-/* The same shape, but sized to its content so it can sit inside a line of text */
-.btn,
-.badge,
-.seg,
-.chip,
-.chips,
-.table-sort,
-.value-link,
-.value-missing {
-  display: inline-flex;
-  align-items: center;
-}
-
-/* Stacks: items in a column */
-.col,
-.section,
-.shell-side,
-.form,
-.form-group,
-.prop-control,
-.list-input,
-.list-input-control,
-.nav-list,
-.links,
-.link-text,
-.values,
-.json,
-.toasts,
-.drawer,
-.drawer-body,
-.checks-list,
-.empty-state {
-  display: flex;
-  flex-direction: column;
-}
-
-/* Items that hang from the top or sit on the text baseline instead of centring */
-.link-item,
-.list-input-item,
-.toast,
-.prop {
-  align-items: flex-start;
-}
-
-.value-link,
-.value-row {
-  align-items: baseline;
-}
-
-/* Gaps, grouped by size rather than repeated per component */
-.section-actions,
-.field-error,
-.value-missing,
-.checks-list,
-.json-branch,
-.list-input-item,
-.table-sort,
-.prop-control,
-.list-input-control {
-  gap: var(--space-1);
-}
-
-.row,
-.shell-bar,
-.section-head,
-.section-foot,
-.nav-item,
-.btn,
-.chip,
-.chips,
-.select-trigger,
-.select-search,
-.select-option,
-.vector,
-.checks-ok,
-.checks-title,
-.drawer-foot,
-.dialog-actions,
-.toasts,
-.link-item,
-.list-input,
-.form-group,
-.value-link,
-.json,
-.toast {
   gap: var(--space-2);
 }
 
-.shell-side,
-.form,
-.empty-state {
+/* With .row: first item at the start, last item at the end */
+.between {
+  justify-content: space-between;
+}
+
+/* In a row, pushes this item (and everything after it) to the end */
+.push-right {
+  margin-left: auto;
+}
+
+/* A column of blocks */
+.stack {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-3);
 }
 
-.shell-status,
-.drawer-body {
-  gap: var(--space-4);
-}
-
-.nav-list,
-.links {
-  gap: 2px;
-}
-
-/* Things that should not shrink or wrap away */
-.section-head,
-.section-foot,
-.nav-item svg,
-.link-item svg,
-.select-chevron,
-.select-check,
-.toast-icon,
-.json-chevron,
-.link-meta,
-.vector-axis-label {
-  flex-shrink: 0;
-}
-
-.badge,
-.btn,
-.nav-title,
-.table th,
-.table td,
-.link-meta,
-.shell-status-text,
-.json-leaf,
-.json-branch,
-.seg-btn {
-  white-space: nowrap;
-}
-
-/* Text utilities */
-.muted,
-.prop-label,
-.value-label,
-.checks-pending,
-.dialog-message,
-.empty-state,
-.mono-xs,
-.select-chevron,
-.select-empty,
-.select-value.is-placeholder,
-.table-mono,
-.toast-close,
-.vector-axis-label {
+.muted {
   color: var(--color-text-muted);
 }
 
-.subtle,
-.prop-help,
-.form-group-help,
-.link-hint,
-.link-meta,
-.links-empty,
-.json-punct,
-.json-summary,
-.crumb-sep,
-.value-empty {
+.subtle {
   color: var(--color-text-subtle);
 }
 
-.mono,
-.input-mono,
-.input-number,
-.table-mono,
-.table-numeric,
-.vector-axis-input {
-  font-family: var(--font-mono);
+.small {
   font-size: var(--text-sm);
 }
 
-.mono-xs,
-.vector-axis-label {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-}
-
-.small,
-.link-hint,
-.links-empty,
-.checks-pending,
-.checks-ok,
-.checks-title,
-.checks-list,
-.toast-message,
-.toast-action,
-.prop-label,
-.value-label,
-.section-title,
-.nav-item,
-.btn {
-  font-size: var(--text-sm);
-}
-
-.badge,
-.nav-title,
-.table th,
-.prop-help,
-.form-group-help,
-.link-meta,
-.shell-status,
-.seg-btn,
-.mono-xs {
-  font-size: var(--text-xs);
-}
-
-/* Small uppercase label: section titles, sidebar group titles, table headers */
-.caps,
-.section-title,
-.nav-title,
-.table th {
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-text-muted);
-}
-
-.truncate,
-.select-value,
-.link-meta {
+/* Cuts long text off with "…" instead of wrapping */
+.truncate {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.field-error,
-.tone-error,
-.value-missing,
-.prop-required {
+/* A short error message, e.g. under an input */
+.field-error {
+  font-size: var(--text-xs);
   color: var(--color-error-text);
 }
 
-.tone-warning {
-  color: var(--color-warning-text);
-}
-
-.field-error,
-.value-missing {
-  font-size: var(--text-xs);
-}
-
-/* Visually hidden but readable by screen readers */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-.between,
-.section-head,
-.drawer-head {
-  justify-content: space-between;
-}
-
-.push-right {
-  margin-left: auto;
-}
-
-/* Lists that are structure, not bullets */
-.plain-list,
-.nav-list,
-.crumbs,
-.links,
-.select-list,
-.checks-list,
-.chips {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-/* Buttons that should look like text or a row */
-.plain-btn,
-.table-sort,
-.checks-link,
-.toast-action,
-.toast-close,
-.json-branch {
-  padding: 0;
-  background: none;
-  border: none;
-  font: inherit;
-  cursor: pointer;
-}
-
-/* A small filled pill for a value: vector axes and list items in the read-only view */
-.chip {
-  min-height: 24px;
-  padding: 0 var(--space-2);
-  background: var(--color-bg-input);
-  border-radius: var(--radius-sm);
-}
-
-/* Rows that highlight on hover over a translucent surface */
-.hover-row,
-.nav-item,
-.link-item {
-  border-radius: var(--radius-sm);
-  color: var(--color-text);
-  text-decoration: none;
-  transition:
-    background-color var(--duration-fast) var(--ease),
-    color var(--duration-fast) var(--ease);
-}
-
-.hover-row:hover,
-.link-item:hover,
-.nav-item:hover {
-  background: var(--color-hover-overlay);
-}
-
-/* ------------------------------------------------------------ 4. Shell & navigation */
+/* ============================================================ AppShell */
 
 /*
  * Grid areas:
@@ -476,100 +164,101 @@ body::before {
     'side content'
     'status status';
   height: 100vh;
-  min-width: 1024px;
-  padding-top: var(--space-2);
-  padding-right: var(--space-3);
+  padding: var(--space-2) var(--space-3) 0 0;
   background: var(--glass-chrome-bg);
 }
 
+/* The "GameAtlas" wordmark, until a real logo exists */
 .shell-brand {
   grid-area: brand;
+  display: flex;
+  align-items: center;
   padding: 0 var(--space-4);
+  font-family: var(--font-wordmark);
 }
 
-/* Global actions, right-aligned with the content zone's edge */
 .shell-bar {
   grid-area: bar;
+  display: flex;
+  align-items: center;
   justify-content: flex-end;
-  min-width: 0;
+  gap: var(--space-2);
 }
 
 .shell-side {
   grid-area: side;
-  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
   padding: var(--space-1) var(--space-2) var(--space-3);
   overflow-y: auto;
 }
 
 .shell-content {
   grid-area: content;
-  min-width: 0;
-  min-height: 0;
   background: var(--glass-content-bg);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
   overflow-y: auto;
 }
 
+/* Breadcrumbs on the left, status text on the right */
 .shell-status {
   grid-area: status;
-  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
   padding-left: var(--space-4);
-}
-
-.shell-status-text {
-  margin-left: auto;
-}
-
-.wordmark {
-  font-family: var(--font-wordmark);
-  font-size: var(--text-base);
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-}
-
-.nav-title {
-  height: var(--section-header-height);
-  padding: 0 var(--space-2);
-}
-
-.nav-item {
-  height: 28px;
-  padding: 0 var(--space-2);
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
 }
 
-.nav-item:hover {
+.shell-status a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.shell-status a:hover {
   color: var(--color-text);
 }
 
-.nav-item.is-active,
-.nav-item.is-active:hover {
-  background: var(--color-accent-soft);
-  color: var(--color-accent-text);
+/* ============================================================ AppSidebar */
+
+.nav-title {
+  padding: var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
 }
 
-/* Breadcrumbs live in the status bar, so they inherit its 12px muted text */
-.crumb-link {
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 28px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
   text-decoration: none;
 }
 
-a.crumb-link:hover,
-.crumb-current {
+.nav-item:hover {
+  background: var(--color-hover-overlay);
   color: var(--color-text);
 }
 
-.crumb-sep {
-  margin: 0 var(--space-2);
+.nav-item.is-active {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-text);
 }
 
-/* ------------------------------------------------------------ 5. Page shell, sections & buttons */
+/* ============================================================ Page layout */
 
 /*
  * The frame every scrolling page shares: a heading with buttons, an optional toolbar,
- * then its sections. Pages that need more (editor grids, the dashboard) add it in their
- * own .module.css.
+ * then its sections. Pages that need more (the dashboard, settings) add it in their own .module.css.
  */
 .page {
   display: flex;
@@ -597,18 +286,10 @@ a.crumb-link:hover,
   gap: var(--space-2);
 }
 
+/* The search box and filters above a list page's table */
 .toolbar {
   display: flex;
-  align-items: center;
   gap: var(--space-3);
-}
-
-.toolbar-search {
-  max-width: 320px;
-}
-
-.toolbar-filter {
-  max-width: 220px;
 }
 
 /*
@@ -640,53 +321,18 @@ a.crumb-link:hover,
   border-left: 1px solid var(--color-border);
 }
 
-/* A column of blocks inside a pane */
-.stack {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-/* Like .stack, but its blocks size to their content and the last one fills the width */
-.stack-start {
-  align-items: flex-start;
-}
-
-.stack-start > :last-child {
-  align-self: stretch;
-}
-
 /* A heading inside a pane, with a rule under it */
 .subhead {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-2);
   min-height: var(--control-height);
   margin-top: var(--space-2);
   padding-bottom: var(--space-1);
   border-bottom: 1px solid var(--color-border);
 }
 
-.subhead-spaced {
-  margin-top: var(--space-4);
-}
-
-/* A plain horizontal rule between parts of a form */
-.divider {
-  width: 100%;
-  margin: var(--space-1) 0;
-  border: none;
-  border-top: 1px solid var(--color-border);
-}
-
-/* An empty drop area waiting to be filled, e.g. a blueprint with no properties yet */
-.empty-box {
-  border: 1px dashed var(--color-border);
-  border-radius: var(--radius-sm);
-}
-
-/* Type-specific settings in the property side panel */
+/* The "… settings" heading in the property side panel */
 .settings-heading {
   padding-top: var(--space-4);
   border-top: 1px solid var(--glass-border);
@@ -694,75 +340,36 @@ a.crumb-link:hover,
   font-weight: 600;
 }
 
-.option-list {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
-  width: 100%;
-}
-
-.option-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  width: 100%;
-}
-
-/* Gives a "nothing here" section enough height to look deliberate */
-.missing {
-  height: 240px;
-}
-
-/* An inline explanation above a form: why this editor is pre-filled, or what is out of date */
-.notice {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-bg-raised);
-  border-radius: var(--radius-sm);
-  font-size: var(--text-sm);
-  color: var(--color-info-text);
-}
-
-.notice svg {
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.notice-warning {
-  color: var(--color-warning-text);
-}
-
-/* ------------------------------------------------------------ 5b. Sections & buttons */
+/* ============================================================ Section */
 
 /*
  * Sections are flat: no fill, no border box, no radius. They are told apart by the rules
  * under their titles and by the space between them (STYLE-GUIDELINES §6.1).
  */
 .section {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
 }
 
 .section-head {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
   min-height: var(--section-header-height);
   padding-bottom: var(--space-2);
   border-bottom: 1px solid var(--color-border);
 }
 
-.section-actions {
-  display: flex;
-  align-items: center;
+.section-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
 }
 
-/* Header icon buttons are a bit smaller than regular controls */
-.section-actions .btn {
-  height: 26px;
-  min-width: 26px;
-}
-
-/* A size container, so content (e.g. a property row) can adapt to the section's width */
+/* A size container, so property rows can put their labels on top when the section is narrow */
 .section-body {
   container-type: inline-size;
   flex: 1;
@@ -771,45 +378,34 @@ a.crumb-link:hover,
   overflow: auto;
 }
 
-/* Untitled section: nothing above to space away from */
-.section-body:first-child {
-  padding-top: 0;
-}
-
-/* A section whose body is a table or canvas, so the content runs to its edges */
-.flush {
-  padding: 0;
-}
-
-/* The dialogue tree's viewport: an edge, so the dot grid doesn't bleed into the page */
-.canvas {
-  overflow: hidden;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-}
-
 .section-foot {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-2);
   margin-top: var(--space-3);
   padding-top: var(--space-3);
   border-top: 1px solid var(--color-border);
 }
 
+/* ============================================================ Button */
+
 .btn {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
+  gap: var(--space-2);
   height: var(--control-height);
   padding: 0 var(--space-3);
-  border: 1px solid transparent;
+  border: none;
   border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
   font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
-  transition:
-    background-color var(--duration-fast) var(--ease),
-    color var(--duration-fast) var(--ease);
 }
 
-.btn:disabled,
-.toggle:disabled,
-.input:disabled {
+.btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
@@ -819,13 +415,8 @@ a.crumb-link:hover,
   color: var(--color-on-accent);
 }
 
-.btn-primary:hover:not(:disabled) {
+.btn-primary:hover {
   background: var(--color-accent-hover);
-}
-
-/* Retro press: a flat 1px drop, no bounce */
-.btn-primary:active:not(:disabled) {
-  transform: translateY(1px);
 }
 
 .btn-secondary {
@@ -833,7 +424,7 @@ a.crumb-link:hover,
   color: var(--color-text);
 }
 
-.btn-secondary:hover:not(:disabled) {
+.btn-secondary:hover {
   background: var(--color-bg-input-hover);
 }
 
@@ -842,7 +433,7 @@ a.crumb-link:hover,
   color: var(--color-text-muted);
 }
 
-.btn-ghost:hover:not(:disabled) {
+.btn-ghost:hover {
   background: var(--color-bg-raised);
   color: var(--color-text);
 }
@@ -852,20 +443,17 @@ a.crumb-link:hover,
   color: var(--color-on-accent);
 }
 
-.btn-danger:hover:not(:disabled) {
-  filter: brightness(1.12);
-}
-
-.btn-icon {
-  width: var(--control-height);
-  padding: 0;
-}
+/* ============================================================ Badge */
 
 .badge {
+  display: inline-flex;
+  align-items: center;
   height: 20px;
   padding: 0 6px;
   border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .badge-neutral {
@@ -873,28 +461,9 @@ a.crumb-link:hover,
   color: var(--color-text-muted);
 }
 
-/* Every other tone is a status fill with light text on it */
-.badge-accent,
-.badge-success,
-.badge-error,
-.badge-info {
-  color: var(--color-on-accent);
-}
-
-.badge-accent {
-  background: var(--color-accent);
-}
-
 .badge-success {
   background: var(--color-success);
-}
-
-.badge-error {
-  background: var(--color-error);
-}
-
-.badge-info {
-  background: var(--color-info);
+  color: var(--color-on-accent);
 }
 
 .badge-warning {
@@ -902,8 +471,16 @@ a.crumb-link:hover,
   color: var(--color-on-warning);
 }
 
-/* Segmented control: a small group of tabs inside one filled track */
+.badge-error {
+  background: var(--color-error);
+  color: var(--color-on-accent);
+}
+
+/* ============================================================ SegmentedControl */
+
+/* A small group of tabs inside one filled track */
 .seg {
+  display: inline-flex;
   padding: 2px;
   background: var(--color-bg-input);
   border-radius: var(--radius-sm);
@@ -915,329 +492,51 @@ a.crumb-link:hover,
   background: transparent;
   border: none;
   border-radius: 2px;
+  font-size: var(--text-xs);
   font-weight: 500;
   color: var(--color-text-muted);
   cursor: pointer;
-  transition:
-    background-color var(--duration-fast) var(--ease),
-    color var(--duration-fast) var(--ease);
 }
 
-.seg-btn:hover,
-.table-sort:hover,
-.toast-close:hover {
-  color: var(--color-text);
-}
-
-.seg-btn.is-active,
-.seg-btn.is-active:hover {
+.seg-btn.is-active {
   background: var(--color-bg-input-hover);
   color: var(--color-text);
 }
 
-/* ------------------------------------------------------------ 6. Form controls */
+/* ============================================================ Notice */
 
-/* The filled look shared by text inputs, number inputs, textareas and the select trigger */
-.input {
-  width: 100%;
-  max-width: 480px;
-  height: var(--control-height);
-  padding: 0 var(--space-2);
-  background: var(--color-bg-input);
-  border: 1px solid transparent;
+/* An explanation above a form: why this editor is pre-filled, or what is out of date */
+.notice {
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-raised);
   border-radius: var(--radius-sm);
-  font-size: var(--text-base);
-  transition:
-    background-color var(--duration-fast) var(--ease),
-    border-color var(--duration-fast) var(--ease);
-}
-
-.input::placeholder {
-  color: var(--color-text-muted);
-}
-
-.input:hover:not(:disabled),
-.vector-axis:hover {
-  background: var(--color-bg-input-hover);
-}
-
-.input:focus-visible,
-.vector-axis:focus-within {
-  border-color: var(--color-border-strong);
-}
-
-.input.is-invalid,
-.input.is-invalid:focus-visible,
-.vector-axis.is-invalid,
-.vector-axis.is-invalid:focus-within {
-  border-color: var(--color-error-text);
-}
-
-.input-number {
-  max-width: 120px;
-}
-
-.textarea {
-  max-width: 640px;
-  height: auto;
-  min-height: 80px;
-  padding: 6px var(--space-2);
-  line-height: var(--leading);
-  resize: vertical;
-}
-
-/* Squared-off switch: fits the retro "no pill shapes" rule */
-.toggle {
-  position: relative;
-  width: 32px;
-  height: 18px;
-  margin: 6px 0;
-  padding: 0;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-input);
-  box-shadow: inset 0 0 0 1px var(--color-border-strong);
-  cursor: pointer;
-  transition: background-color var(--duration-fast) var(--ease);
-}
-
-.toggle[aria-checked='true'] {
-  background: var(--color-accent);
-  box-shadow: none;
-}
-
-.toggle-knob {
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 12px;
-  height: 12px;
-  border-radius: 2px;
-  background: var(--color-text-muted);
-  transition:
-    transform var(--duration-fast) var(--ease),
-    background-color var(--duration-fast) var(--ease);
-}
-
-.toggle[aria-checked='true'] .toggle-knob {
-  transform: translateX(14px);
-  background: var(--color-on-accent);
-}
-
-.vector-axis {
-  width: 110px;
-  height: var(--control-height);
-  background: var(--color-bg-input);
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  transition:
-    background-color var(--duration-fast) var(--ease),
-    border-color var(--duration-fast) var(--ease);
-}
-
-/* The whole box shows focus, not the inner input */
-.vector-axis:focus-within {
-  outline: 2px solid var(--color-accent-text);
-  outline-offset: 2px;
-}
-
-.vector-axis.is-disabled {
-  opacity: 0.45;
-}
-
-/* Neutral axis labels (no X/Y/Z color coding for now) */
-.vector-axis-label {
-  width: 22px;
-  text-align: center;
-  border-right: 1px solid var(--color-border);
-}
-
-.vector-axis-input {
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-  padding: 0 var(--space-2);
-  background: transparent;
-  border: none;
-}
-
-.vector-axis-input:focus-visible {
-  outline: none;
-}
-
-/* Property row: label on the left, control on the right */
-.prop {
-  display: grid;
-  grid-template-columns: var(--label-width) minmax(0, 1fr);
-  column-gap: var(--space-4);
-}
-
-/* In narrow sections, labels move above inputs so inputs keep a usable width */
-@container (max-width: 520px) {
-  .prop,
-  .value-row {
-    grid-template-columns: minmax(0, 1fr);
-    row-gap: var(--space-1);
-  }
-
-  .prop .prop-label {
-    min-height: 0;
-  }
-}
-
-.prop.is-stacked {
-  grid-template-columns: minmax(0, 1fr);
-  row-gap: var(--space-1);
-}
-
-.prop-label {
-  gap: 2px;
-  min-height: var(--control-height);
-  font-weight: 500;
-}
-
-.prop.is-stacked .prop-label {
-  min-height: 0;
-}
-
-.prop-control,
-.list-input-control {
-  min-width: 0;
-}
-
-.form {
-  min-width: 0;
-}
-
-/* A group (object property): its nested properties are indented behind a divider line */
-.form-group,
-.value-group-body {
-  padding-left: var(--space-4);
-  border-left: 2px solid var(--color-border);
-}
-
-.form-group {
-  min-width: 0;
-  padding-block: var(--space-1);
-}
-
-.form-group-label,
-.value-group-label {
   font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--color-text);
+  color: var(--color-info-text);
 }
 
-/* Repeatable rows for a list property */
-.list-input {
-  align-items: flex-start;
-  width: 100%;
-  max-width: 480px;
+.notice-warning {
+  color: var(--color-warning-text);
 }
 
-.list-input-item {
-  width: 100%;
-}
+/* ============================================================ EmptyState */
 
-.list-input-control {
-  flex: 1;
-}
-
-/* ------------------------------------------------------------ 7. Select & tables */
-
-.select {
-  position: relative;
-  width: 100%;
-  max-width: 480px;
-}
-
-.select-trigger {
+.empty-state {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  max-width: none;
-  text-align: left;
-  cursor: pointer;
-}
-
-.select-value {
-  flex: 1;
-}
-
-/* Positioned with inline top/bottom/left/width from Select.jsx */
-.select-popover {
-  position: fixed;
-  z-index: var(--z-dropdown);
-  min-width: 180px;
-  padding: var(--space-1);
-  border-radius: var(--radius-md);
-  animation: pop-in var(--duration-fast) var(--ease);
-}
-
-.select-search {
-  margin-bottom: var(--space-1);
-  padding: 0 var(--space-2);
-  border-bottom: 1px solid var(--color-border);
+  justify-content: center;
+  gap: var(--space-3);
+  height: 100%;
+  padding: var(--space-6);
+  text-align: center;
   color: var(--color-text-muted);
 }
 
-.select-search input {
-  flex: 1;
-  height: var(--control-height);
-  background: transparent;
-  border: none;
-  outline: none;
-  color: var(--color-text);
-  font-size: var(--text-base);
-}
-
-.select-list {
-  max-height: 240px;
-  overflow-y: auto;
-}
-
-.select-option {
-  height: var(--control-height);
-  padding: 0 var(--space-2);
-  border-radius: var(--radius-sm);
-  font-size: var(--text-base);
-  cursor: pointer;
-}
-
-.select-option.is-active {
-  background: var(--color-accent-soft);
-}
-
-.select-check {
-  color: var(--color-accent-text);
-}
-
-.select-check.is-hidden {
-  visibility: hidden;
-}
-
-.select-option-label {
-  flex: 1;
-}
-
-.select-empty {
-  padding: var(--space-2);
-}
-
-.table-wrap {
-  overflow: auto;
-}
+/* ============================================================ Table */
 
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--text-base);
-}
-
-.table th {
-  position: sticky;
-  top: 0;
-  background: var(--color-bg-raised);
-  text-align: left;
 }
 
 .table th,
@@ -1245,10 +544,23 @@ a.crumb-link:hover,
   height: var(--row-height);
   padding: 0 var(--space-3);
   border-bottom: 1px solid var(--color-border);
+  text-align: left;
+}
+
+/* Headers stay at the top while the rows scroll; clicking one sorts the table */
+.table th {
+  position: sticky;
+  top: 0;
+  background: var(--color-bg-raised);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  cursor: pointer;
 }
 
 .table tbody tr {
-  transition: background-color var(--duration-fast) var(--ease);
+  cursor: pointer;
 }
 
 .table tbody tr:hover {
@@ -1259,105 +571,194 @@ a.crumb-link:hover,
   background: var(--color-accent-soft);
 }
 
-/* Rows show the focus ring inside the table edge */
-.table tbody tr:focus-visible {
-  outline-offset: -2px;
-}
-
-.table-clickable {
-  cursor: pointer;
-}
-
-.table-numeric,
-.table th.table-numeric {
-  text-align: right;
-}
-
-/* The header keeps the uppercase label font even in a numeric column */
-.table th.table-numeric {
-  font-family: inherit;
-  font-size: var(--text-xs);
-}
-
-.table-sort {
-  letter-spacing: inherit;
-  text-transform: inherit;
-  color: inherit;
-}
-
-.table-sort-idle {
-  opacity: 0.5;
-}
-
-/* ------------------------------------------------------- 8. Lists, values & JSON */
+/* ============================================================ LinkList */
 
 .link-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  text-decoration: none;
 }
 
-.link-item svg,
-.toast-icon {
-  margin-top: 2px;
-  color: var(--color-text-muted);
+.link-item:hover {
+  background: var(--color-hover-overlay);
 }
 
-.link-text {
-  flex: 1;
-  min-width: 0;
+.link-hint {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
 }
 
-.link-meta {
-  margin-top: 2px;
+/* ============================================================ JsonPreview */
+
+.json {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
 }
 
-.empty-state {
-  justify-content: center;
-  height: 100%;
-  padding: var(--space-6);
-  text-align: center;
-}
-
-/* Validation summary: a filled box listing what still needs fixing */
-.checks {
-  align-self: stretch;
+.json-code {
+  margin: 0;
   padding: var(--space-3);
-  background: var(--color-bg-raised);
+  background: var(--color-bg-app);
+  border-radius: var(--radius-sm);
+  overflow: auto;
+}
+
+/* ============================================================ Inputs */
+
+/* The filled look shared by text inputs, number inputs, textareas and dropdowns */
+.input {
+  width: 100%;
+  max-width: 480px;
+  height: var(--control-height);
+  padding: 0 var(--space-2);
+  background: var(--color-bg-input);
+  border: none;
   border-radius: var(--radius-sm);
 }
 
-.checks-ok,
-.checks-title {
-  font-weight: 500;
+.input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
+
+.input-number {
+  max-width: 120px;
+}
+
+.textarea {
+  height: auto;
+  padding: 6px var(--space-2);
+}
+
+/* The margin lines the box up with the label next to it */
+.checkbox {
+  width: 16px;
+  height: 16px;
+  margin: 7px 0;
+  accent-color: var(--color-accent);
+}
+
+/* ============================================================ PropertyRow */
+
+/* Label on the left, input (with its help or error text) on the right */
+.prop {
+  display: grid;
+  grid-template-columns: var(--label-width) minmax(0, 1fr);
+  column-gap: var(--space-4);
+}
+
+.prop-label {
+  display: flex;
+  align-items: center;
+  min-height: var(--control-height);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.prop-control {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.prop-help {
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
+}
+
+/*
+ * In narrow places (under 520px wide), labels move above inputs so inputs keep a usable width.
+ * This measures the nearest "size container": a section body, the side panel, or a graph node.
+ */
+@container (max-width: 520px) {
+  .prop,
+  .value-row {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: var(--space-1);
+  }
+
+  .prop-label {
+    min-height: 0;
+  }
+}
+
+/* ============================================================ FormRenderer */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* A group (object property): its nested properties are indented behind a divider line */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-1) 0 var(--space-1) var(--space-4);
+  border-left: 2px solid var(--color-border);
+}
+
+.form-group-label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+/* ============================================================ ListInput (also the enum options editor) */
+
+.list-input {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 480px;
+}
+
+/* Keeps "Add item" its natural width */
+.list-input > .btn {
+  align-self: flex-start;
+}
+
+/* ============================================================ ValidationSummary */
 
 .checks-ok {
   color: var(--color-success-text);
 }
 
 .checks-title {
+  font-weight: 500;
   color: var(--color-error-text);
 }
 
 .checks-list {
-  margin-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
 }
 
-.checks-link,
-.value-link {
+/* A button that looks like a link */
+.link-button {
+  padding: 0;
+  background: none;
+  border: none;
   color: var(--color-accent-text);
-  text-decoration: none;
-}
-
-.checks-link {
-  text-align: left;
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-align: left;
+  cursor: pointer;
 }
 
-/* Read-only values (the asset view) */
-.values {
-  margin: 0;
-}
+/* ============================================================ ValueRenderer */
 
 .value-row,
 .value-group {
@@ -1371,205 +772,77 @@ a.crumb-link:hover,
   column-gap: var(--space-4);
 }
 
-.values > :last-child {
-  border-bottom: none;
+.value-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
 }
 
-.value-label {
-  font-weight: 500;
-}
-
-.value,
-.value-text {
-  min-width: 0;
-  margin: 0;
+/* Keeps line breaks in long text, and lets long IDs break instead of overflowing */
+.value {
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-.value-text {
-  white-space: pre-wrap;
-}
+/* ============================================================ Floating layers */
 
-.value-label,
-.value-group-body {
-  margin: 0;
-}
-
-.value-group-label {
-  margin: 0 0 var(--space-1);
-}
-
-.value-empty {
-  font-style: italic;
-}
-
-.value-link:hover {
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.chips {
-  flex-wrap: wrap;
-  row-gap: var(--space-1);
-}
-
-.json {
-  min-height: 0;
-}
-
-.json-code,
-.json-tree {
-  margin: 0;
-  padding: var(--space-3);
-  background: var(--color-bg-app);
-  border-radius: var(--radius-sm);
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  line-height: 1.6;
-  overflow: auto;
-}
-
-/* Syntax colors, derived from the palette */
-.json-key {
-  color: var(--color-accent-text);
-}
-
-.json-string {
-  color: var(--color-success-text);
-}
-
-.json-number {
-  color: var(--color-warning-text);
-}
-
-.json-literal {
-  color: var(--color-info-text);
-}
-
-.json-summary {
-  margin-left: var(--space-2);
-}
-
-/* Tree view: indentation comes from --depth set on each row */
-.json-leaf,
-.json-branch {
-  min-height: 22px;
-}
-
-.json-leaf {
-  padding-left: calc(var(--depth) * var(--space-4) + 18px);
-}
-
-.json-branch {
-  width: 100%;
-  padding-left: calc(var(--depth) * var(--space-4));
-  text-align: left;
-}
-
-.json-branch:hover {
-  background: var(--color-bg-raised);
-}
-
-.json-chevron {
-  color: var(--color-text-muted);
-  transition: transform var(--duration-fast) var(--ease);
-}
-
-.json-chevron.is-open {
-  transform: rotate(90deg);
-}
-
-/* ------------------------------------------------------------ 9. Floating layers */
-
-/* Glass: floating layers only (menus, popovers, toasts, side panel, dialogs, minimap) */
+/* Glass: floating layers only (toasts, side panel, dialogs, the dialogue canvas toolbar and menu) */
 .glass {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   box-shadow: var(--shadow-float);
-  -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
 }
 
-@supports not (backdrop-filter: blur(1px)) {
-  .glass {
-    background: var(--color-bg-raised);
-  }
-}
+/* ============================================================ Toasts */
 
 .toasts {
   position: fixed;
   right: var(--space-4);
   bottom: var(--space-4);
   z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
   width: 320px;
-  pointer-events: none;
 }
 
 .toast {
-  position: relative;
-  padding: var(--space-3) var(--space-2) var(--space-3) var(--space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
   border-radius: var(--radius-md);
-  overflow: hidden;
-  pointer-events: auto;
-  animation: toast-in var(--duration-fast) var(--ease);
 }
 
-/* 3px status edge */
-.toast::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 3px;
-  background: var(--toast-fill);
-}
-
+/* A colored left edge shows the kind of message */
 .toast-success {
-  --toast-fill: var(--color-success);
-  --toast-text: var(--color-success-text);
+  border-left: 3px solid var(--color-success);
 }
 
 .toast-warning {
-  --toast-fill: var(--color-warning);
-  --toast-text: var(--color-warning-text);
+  border-left: 3px solid var(--color-warning);
 }
 
 .toast-error {
-  --toast-fill: var(--color-error);
-  --toast-text: var(--color-error-text);
+  border-left: 3px solid var(--color-error);
 }
 
 .toast-info {
-  --toast-fill: var(--color-info);
-  --toast-text: var(--color-info-text);
-}
-
-.toast-icon {
-  color: var(--toast-text);
+  border-left: 3px solid var(--color-info);
 }
 
 .toast-message {
   flex: 1;
 }
 
-.toast-action {
-  font-weight: 500;
-  color: var(--color-accent-text);
-}
+/* ============================================================ SidePanel */
 
-.toast-close {
-  padding: 2px;
-  border-radius: var(--radius-sm);
-}
-
-/* Slide-out side panel */
 .drawer-backdrop {
   position: fixed;
   inset: 0;
   z-index: var(--z-panel);
   background: rgb(0 0 0 / 0.25);
-  animation: fade-in var(--duration-fast) var(--ease);
 }
 
 .drawer {
@@ -1578,38 +851,40 @@ a.crumb-link:hover,
   right: 0;
   bottom: 0;
   z-index: var(--z-panel);
+  display: flex;
+  flex-direction: column;
   width: 400px;
-  border-width: 0 0 0 1px;
-  border-radius: var(--radius-md) 0 0 var(--radius-md);
-  animation: slide-in var(--duration-fast) var(--ease);
-}
-
-.drawer:focus {
-  outline: none;
 }
 
 .drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: var(--space-3) var(--space-2) var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--glass-border);
 }
 
+/* A size container, like .section-body, so property rows stack their labels in here */
 .drawer-body {
+  container-type: inline-size;
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
   padding: var(--space-4);
   overflow-y: auto;
 }
 
-.drawer-foot,
-.dialog-actions {
-  justify-content: flex-end;
-}
-
 .drawer-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--glass-border);
 }
 
-/* Confirmation dialog (a native <dialog>) */
+/* ============================================================ ConfirmDialog (the browser's own <dialog>) */
+
 .dialog {
   width: 400px;
   padding: var(--space-5);
@@ -1617,49 +892,14 @@ a.crumb-link:hover,
   color: var(--color-text);
 }
 
-.dialog::backdrop {
-  background: rgb(0 0 0 / 0.5);
-}
-
 .dialog-message {
   margin-top: var(--space-2);
+  color: var(--color-text-muted);
 }
 
 .dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
   margin-top: var(--space-5);
-}
-
-@keyframes toast-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-}
-
-@keyframes pop-in {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-}
-
-@keyframes slide-in {
-  from {
-    transform: translateX(100%);
-  }
-}
-
-@keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    transition-duration: 0ms !important;
-    animation-duration: 0ms !important;
-  }
 }

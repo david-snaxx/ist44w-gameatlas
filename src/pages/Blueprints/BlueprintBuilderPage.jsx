@@ -1,9 +1,7 @@
-import { CircleAlert, Copy, Download, LayoutList, Plus, RotateCcw, Save, Trash2 } from 'lucide-react'
+import { Copy, Download, LayoutList, Plus, RotateCcw, Save, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import AppShell from '../../components/AppShell/AppShell.jsx'
-import AppSidebar from '../../components/AppSidebar/AppSidebar.jsx'
-import Breadcrumbs from '../../components/Breadcrumbs/Breadcrumbs.jsx'
 import Button from '../../components/Button/Button.jsx'
 import ConfirmDialog from '../../components/ConfirmDialog/ConfirmDialog.jsx'
 import EmptyState from '../../components/EmptyState/EmptyState.jsx'
@@ -43,7 +41,6 @@ import { useAssets } from '../../data/useAssets.js'
 import { deleteBlueprint, saveBlueprint } from '../../schema/blueprintStore.js'
 import { useBlueprints } from '../../schema/useBlueprints.js'
 import { countProblems, validateBlueprint, validateFieldDefinition, validateValues } from '../../schema/validation.js'
-import { cx } from '../../utils/cx.js'
 import { downloadJson } from '../../utils/downloadJson.js'
 import { plural } from '../../utils/plural.js'
 import { useUnsavedChanges } from '../../utils/useUnsavedChanges.js'
@@ -117,7 +114,6 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
   const blueprintOptions = linkTargets.map((blueprint) => ({
     value: blueprint.id,
     label: blueprint.name || blueprint.id,
-    hint: blueprint.id,
   }))
   const blueprintNames = Object.fromEntries(blueprintOptions.map((option) => [option.value, option.label]))
 
@@ -129,15 +125,12 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
   // In-app navigation (sidebar, breadcrumbs, back button) asks for confirmation
   const { blocker, allowLeaving } = useUnsavedChanges(isDirty)
 
-  const shellProps = { actions: <TopBarActions noun="blueprint" newPath="/blueprints/new" importFile={parseBlueprintFile} />, sidebar: <AppSidebar /> }
-
   if (blueprintId && !baseline) {
     return (
       <MissingRecord
         title="Blueprint not found"
         message={`There's no blueprint with the ID "${blueprintId}".`}
         back={{ to: '/blueprints', label: 'All blueprints' }}
-        crumbs={[{ label: 'Blueprints', to: '/blueprints' }]}
       />
     )
   }
@@ -315,12 +308,8 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
 
   return (
     <AppShell
-      {...shellProps}
-      breadcrumbs={
-        <Breadcrumbs
-          items={[{ label: 'Blueprints', to: '/blueprints' }, { label: draft.name || baseline?.name || 'New blueprint' }]}
-        />
-      }
+      actions={<TopBarActions noun="blueprint" newPath="/blueprints/new" importFile={parseBlueprintFile} />}
+      crumbs={[{ label: 'Blueprints', to: '/blueprints' }, { label: draft.name || baseline?.name || 'New blueprint' }]}
       status={status}
     >
       <div className="panes" style={{ '--panes': 'minmax(0, 1fr) minmax(360px, 0.85fr)' }}>
@@ -332,7 +321,6 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
                 <Button
                   variant="ghost"
                   icon={LayoutList}
-                  aria-label={`View ${baseline.name} assets`}
                   title="View assets"
                   onClick={() => navigate(`/blueprints/${baseline.id}/assets`)}
                 />
@@ -341,7 +329,6 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
                 <Button
                   variant="ghost"
                   icon={Copy}
-                  aria-label={`Duplicate ${baseline.name}`}
                   title="Duplicate blueprint"
                   onClick={() =>
                     navigate('/blueprints/new', {
@@ -353,7 +340,6 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
               <Button
                 variant="ghost"
                 icon={Download}
-                aria-label="Download blueprint file"
                 title="Download blueprint file"
                 onClick={handleExport}
               />
@@ -384,61 +370,38 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
               <h2>General</h2>
             </div>
             <PropertyRow
-              id="blueprint-name"
               label="Name"
               required
               error={metaError('name')}
               help="What this kind of asset is called, e.g. Item or Quest."
             >
-              {(inputProps) => (
-                <TextInput
-                  {...inputProps}
-                  placeholder="e.g. Item"
-                  value={draft.name}
-                  onChange={(event) => changeName(event.target.value)}
-                />
-              )}
+              <TextInput placeholder="e.g. Item" value={draft.name} onChange={(event) => changeName(event.target.value)} />
             </PropertyRow>
             <PropertyRow
-              id="blueprint-id"
               label="ID"
               required
               error={metaError('id')}
               help="Used in exported files and links. It follows the name until you change it."
             >
-              {(inputProps) => (
-                <TextInput
-                  {...inputProps}
-                  mono
-                  placeholder="item"
-                  value={draft.id}
-                  onChange={(event) => changeId(event.target.value)}
-                />
-              )}
+              <TextInput placeholder="item" value={draft.id} onChange={(event) => changeId(event.target.value)} />
             </PropertyRow>
-            <PropertyRow id="blueprint-description" label="Description" help="Optional. Tells teammates what it's for.">
-              {(inputProps) => (
-                <TextArea
-                  {...inputProps}
-                  value={draft.description}
-                  onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
-                />
-              )}
+            <PropertyRow label="Description" help="Optional. Tells teammates what it's for.">
+              <TextArea
+                value={draft.description}
+                onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
+              />
             </PropertyRow>
 
-            <div className={cx('subhead', 'subhead-spaced')}>
+            <div className="subhead">
               <h2>
-                Properties <span className="mono-xs subtle">{countProperties(draft.fields)}</span>
+                Properties <span className="subtle">{countProperties(draft.fields)}</span>
               </h2>
               <Button variant="ghost" icon={Plus} onClick={() => openAddProperty()}>
                 Add property
               </Button>
             </div>
             {showAllErrors && errors.blueprint?.fields && (
-              <p className="field-error">
-                <CircleAlert size={14} strokeWidth={1.75} aria-hidden="true" />
-                {errors.blueprint.fields}
-              </p>
+              <p className="field-error">{errors.blueprint.fields}</p>
             )}
             {draft.fields.length > 0 ? (
               <PropertyList
@@ -452,13 +415,11 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
                 onRemove={removeProperty}
               />
             ) : (
-              <div className="empty-box">
-                <EmptyState message="No properties yet. Properties are the pieces of data every asset of this blueprint has.">
-                  <Button icon={Plus} onClick={() => openAddProperty()}>
-                    Add property
-                  </Button>
-                </EmptyState>
-              </div>
+              <EmptyState message="No properties yet. Properties are the pieces of data every asset of this blueprint has.">
+                <Button icon={Plus} onClick={() => openAddProperty()}>
+                  Add property
+                </Button>
+              </EmptyState>
             )}
           </div>
         </Section>
@@ -466,7 +427,7 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
         <Section
           title="Preview"
           actions={
-            <SegmentedControl label="Preview" options={PREVIEW_TABS} value={previewTab} onChange={setPreviewTab} />
+            <SegmentedControl options={PREVIEW_TABS} value={previewTab} onChange={setPreviewTab} />
           }
         >
           {previewTab === 'form' ? (
@@ -492,8 +453,6 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
                   values={sampleValues}
                   onChange={changeSampleValues}
                   errors={visiblePreviewErrors}
-                  idPrefix="preview"
-                  blueprintNames={blueprintNames}
                 />
               </>
             )
@@ -508,37 +467,32 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
         </Section>
       </div>
 
-      <SidePanel
-        open={Boolean(editor)}
-        title={editorTitle}
-        onClose={() => setEditor(null)}
-        footer={
-          <>
-            <Button onClick={() => setEditor(null)}>Cancel</Button>
-            <Button variant="primary" onClick={applyEditor}>
-              {editor?.mode === 'add' ? 'Add property' : 'Apply changes'}
-            </Button>
-          </>
-        }
-      >
-        {editor && (
-          <PropertyEditor
-            editor={editor}
-            setEditor={setEditor}
-            errors={editorErrors}
-            blueprintOptions={blueprintOptions}
-          />
-        )}
-      </SidePanel>
+      {editor && (
+        <SidePanel
+          title={editorTitle}
+          onClose={() => setEditor(null)}
+          footer={
+            <>
+              <Button onClick={() => setEditor(null)}>Cancel</Button>
+              <Button variant="primary" onClick={applyEditor}>
+                {editor.mode === 'add' ? 'Add property' : 'Apply changes'}
+              </Button>
+            </>
+          }
+        >
+          <PropertyEditor editor={editor} setEditor={setEditor} errors={editorErrors} blueprintOptions={blueprintOptions} />
+        </SidePanel>
+      )}
 
-      <ConfirmDialog
-        open={confirmDelete}
-        title="Delete blueprint?"
-        message={deleteMessage}
-        confirmLabel="Delete blueprint"
-        onCancel={() => setConfirmDelete(false)}
-        onConfirm={handleDelete}
-      />
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Delete blueprint?"
+          message={deleteMessage}
+          confirmLabel="Delete blueprint"
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={handleDelete}
+        />
+      )}
 
       <UnsavedChangesDialog blocker={blocker} name={draft.name || 'this blueprint'} />
     </AppShell>

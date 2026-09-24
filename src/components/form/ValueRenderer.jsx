@@ -1,7 +1,5 @@
-import { CircleAlert } from 'lucide-react'
 import { Link } from 'react-router'
 import { VECTOR_AXES } from '../../schema/fieldTypes.js'
-import Badge from '../Badge/Badge.jsx'
 
 /**
  * Shows saved values read-only, laid out by the blueprint's properties: the viewing counterpart of FormRenderer.
@@ -12,7 +10,7 @@ import Badge from '../Badge/Badge.jsx'
  */
 function ValueRenderer({ fields, data, resolveLink }) {
   return (
-    <dl className="values">
+    <div>
       {fields
         .filter((field) => field.key)
         .map((field) => {
@@ -21,28 +19,28 @@ function ValueRenderer({ fields, data, resolveLink }) {
           if (field.type === 'object') {
             return (
               <div key={field.key} className="value-group">
-                <dt className="value-group-label">{field.label}</dt>
-                <dd className="value-group-body">
+                <p className="form-group-label">{field.label}</p>
+                <div className="form-group">
                   {field.fields?.length ? (
                     <ValueRenderer fields={field.fields} data={value ?? {}} resolveLink={resolveLink} />
                   ) : (
-                    <span className="value-empty">No properties</span>
+                    <span className="muted">No properties</span>
                   )}
-                </dd>
+                </div>
               </div>
             )
           }
 
           return (
             <div key={field.key} className="value-row">
-              <dt className="value-label">{field.label}</dt>
-              <dd className="value">
+              <span className="muted">{field.label}</span>
+              <div className="value">
                 <Value field={field} value={value} resolveLink={resolveLink} />
-              </dd>
+              </div>
             </div>
           )
         })}
-    </dl>
+    </div>
   )
 }
 
@@ -50,63 +48,36 @@ function ValueRenderer({ fields, data, resolveLink }) {
 function Value({ field, value, resolveLink }) {
   const isEmpty = value === undefined || value === null || value === ''
   if (isEmpty && field.type !== 'bool' && field.type !== 'list') {
-    return <span className="value-empty">Not set</span>
+    return <span className="muted">Not set</span>
   }
 
   switch (field.type) {
-    case 'string':
-      return <span>{value}</span>
-    case 'text':
-      return <p className="value-text">{value}</p>
-    case 'int':
-    case 'float':
-      return <span className="mono">{value}</span>
     case 'bool':
-      return <span>{value ? 'Yes' : 'No'}</span>
-    case 'enum':
-      return <Badge>{value}</Badge>
+      return value ? 'Yes' : 'No'
     case 'vector2':
     case 'vector3':
-      return (
-        <span className="chips">
-          {VECTOR_AXES[field.type].map((axis) => (
-            <span key={axis} className="chip mono">
-              <span className="mono-xs">{axis.toUpperCase()}</span>
-              {value?.[axis] ?? 0}
-            </span>
-          ))}
-        </span>
-      )
+      return VECTOR_AXES[field.type].map((axis) => `${axis.toUpperCase()} ${value?.[axis] ?? 0}`).join(', ')
     case 'reference': {
       const link = resolveLink(field.targetSchema, value)
       return link ? (
-        <Link to={link.to} className="value-link">
-          {link.label}
-          <span className="mono-xs">{value}</span>
-        </Link>
+        <Link to={link.to}>{link.label}</Link>
       ) : (
-        <span className="value-missing">
-          <CircleAlert size={14} strokeWidth={1.75} aria-hidden="true" />
-          Linked asset no longer exists <span className="mono">{value}</span>
-        </span>
+        <span className="field-error">Linked asset “{value}” no longer exists</span>
       )
     }
     case 'list': {
       const items = Array.isArray(value) ? value : []
-      if (items.length === 0) return <span className="value-empty">None</span>
-      return (
-        <ul className="chips">
-          {items.map((item, index) => (
-            // List items have no IDs of their own, so their position is the key
-            <li key={index} className="chip">
-              <Value field={{ ...field.itemType, key: 'item' }} value={item} resolveLink={resolveLink} />
-            </li>
-          ))}
-        </ul>
-      )
+      if (items.length === 0) return <span className="muted">None</span>
+      // List items have no IDs of their own, so their position is the key
+      return items.map((item, index) => (
+        <span key={index}>
+          {index > 0 && ', '}
+          <Value field={{ ...field.itemType, key: 'item' }} value={item} resolveLink={resolveLink} />
+        </span>
+      ))
     }
     default:
-      return <span className="mono">{JSON.stringify(value)}</span>
+      return String(value)
   }
 }
 

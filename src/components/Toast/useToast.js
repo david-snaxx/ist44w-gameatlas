@@ -1,5 +1,7 @@
-import { useContext } from 'react'
-import { ToastContext } from './toastContext.js'
+import { createContext, useContext } from 'react'
+
+// Holds { show }. Provided by ToastProvider around the whole app.
+export const ToastContext = createContext(null)
 
 /**
  * const toast = useToast()
@@ -7,7 +9,5 @@ import { ToastContext } from './toastContext.js'
  * status: 'success' | 'warning' | 'error' | 'info'. Errors stay until dismissed.
  */
 export function useToast() {
-  const toast = useContext(ToastContext)
-  if (!toast) throw new Error('useToast must be used inside <ToastProvider>')
-  return toast
+  return useContext(ToastContext)
 }

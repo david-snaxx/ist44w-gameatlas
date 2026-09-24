@@ -1,33 +1,27 @@
 import { Trash2 } from 'lucide-react'
-import { useEffect, useId, useRef } from 'react'
-import { cx } from '../../utils/cx.js'
+import { useEffect, useRef } from 'react'
 import Button from '../Button/Button.jsx'
 
 /**
- * Modal confirmation for destructive actions only. Uses the native <dialog> element,
- * which handles focus trapping and Esc for us.
+ * Modal confirmation for destructive actions only. Render it only while it should be open:
+ *   {confirmDelete && <ConfirmDialog ... />}
+ *
+ * It uses the browser's own <dialog> element, which dims the page behind it and closes on Esc
+ * (Esc calls onCancel).
  */
-function ConfirmDialog({ open, title, message, confirmLabel = 'Delete', onConfirm, onCancel }) {
+function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCancel }) {
   const dialogRef = useRef(null)
-  const titleId = useId()
 
+  // A <dialog> starts hidden; showModal() opens it once it's on the page
   useEffect(() => {
     const dialog = dialogRef.current
-    if (open && !dialog.open) dialog.showModal()
-    if (!open && dialog.open) dialog.close()
-  }, [open])
+    dialog.showModal()
+    return () => dialog.close()
+  }, [])
 
   return (
-    <dialog
-      ref={dialogRef}
-      aria-labelledby={titleId}
-      className={cx('glass', 'dialog')}
-      onCancel={(event) => {
-        event.preventDefault() // let React state close it
-        onCancel()
-      }}
-    >
-      <h2 id={titleId}>{title}</h2>
+    <dialog ref={dialogRef} className="glass dialog" onCancel={onCancel}>
+      <h2>{title}</h2>
       <p className="dialog-message">{message}</p>
       <div className="dialog-actions">
         <Button onClick={onCancel}>Cancel</Button>

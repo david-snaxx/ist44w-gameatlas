@@ -9,16 +9,16 @@ import { countProperties, parseBlueprintFile } from '../../schema/blueprintDraft
 import { useBlueprints } from '../../schema/useBlueprints.js'
 
 const COLUMNS = [
-  { key: 'name', label: 'Name', sortable: true },
-  { key: 'id', label: 'ID', sortable: true, mono: true },
+  { key: 'name', label: 'Name' },
+  { key: 'id', label: 'ID' },
   {
     key: 'description',
     label: 'Description',
-    render: (row) => <span className="truncate">{row.description || '—'}</span>,
+    render: (row) => row.description || '—',
   },
-  { key: 'properties', label: 'Properties', sortable: true, numeric: true },
-  { key: 'assets', label: 'Assets', sortable: true, numeric: true },
-  { key: 'version', label: 'Version', sortable: true, numeric: true },
+  { key: 'properties', label: 'Properties' },
+  { key: 'assets', label: 'Assets' },
+  { key: 'version', label: 'Version' },
 ]
 
 /** Every blueprint in a table (/blueprints). */

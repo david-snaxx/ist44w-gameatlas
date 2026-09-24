@@ -1,50 +1,23 @@
-import { CircleAlert } from 'lucide-react'
-import { cx } from '../../utils/cx.js'
-
 /**
- * One labelled property in a form: label on the left, input on the right.
- * layout="stacked" puts the label above the input (for narrow places like side panels and graph nodes).
+ * One labelled property in a form: label on the left, input on the right. In narrow places
+ * (side panels, the dialogue editor, graph nodes) the label moves above the input by itself.
  *
- * children can be a function. It receives the props the input needs to be linked to its
- * label, help text and error message:
- *   <PropertyRow id="name" label="Name" error={error}>
- *     {(inputProps) => <TextInput {...inputProps} value={name} onChange={...} />}
+ *   <PropertyRow label="Name" required error={error} help="Shown on the item card.">
+ *     <TextInput value={name} onChange={...} />
  *   </PropertyRow>
+ *
+ * The error, if there is one, replaces the help text.
  */
-function PropertyRow({ id, label, required, help, error, layout = 'inline', children }) {
-  const messageId = error || help ? `${id}-message` : undefined
-  const inputProps = {
-    id,
-    invalid: Boolean(error),
-    required,
-    'aria-describedby': messageId,
-  }
-
+function PropertyRow({ label, required, help, error, children }) {
   return (
-    <div className={cx('prop', layout === 'stacked' && 'is-stacked')}>
-      <label id={`${id}-label`} htmlFor={id} className="prop-label">
+    <div className="prop">
+      <span className="prop-label">
         {label}
-        {required && (
-          <>
-            <span className="prop-required" aria-hidden="true">*</span>
-            <span className="sr-only">(required)</span>
-          </>
-        )}
-      </label>
+        {required && ' *'}
+      </span>
       <div className="prop-control">
-        {typeof children === 'function' ? children(inputProps) : children}
-        {error ? (
-          <p id={messageId} className="field-error">
-            <CircleAlert size={14} strokeWidth={1.75} aria-hidden="true" />
-            {error}
-          </p>
-        ) : (
-          help && (
-            <p id={messageId} className="prop-help">
-              {help}
-            </p>
-          )
-        )}
+        {children}
+        {error ? <p className="field-error">{error}</p> : help && <p className="prop-help">{help}</p>}
       </div>
     </div>
   )

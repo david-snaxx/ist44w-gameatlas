@@ -1,7 +1,7 @@
+import Checkbox from '../../components/form/Checkbox.jsx'
 import PropertyRow from '../../components/form/PropertyRow.jsx'
 import Select from '../../components/form/Select.jsx'
 import TextInput from '../../components/form/TextInput.jsx'
-import Toggle from '../../components/form/Toggle.jsx'
 import { createField, toCamelCase } from '../../schema/blueprintDraft.js'
 import { FIELD_TYPES, PROPERTY_TYPE_OPTIONS, supportsRequired } from '../../schema/fieldTypes.js'
 import TypeSettings from './TypeSettings.jsx'
@@ -46,83 +46,46 @@ function PropertyEditor({ editor, setEditor, errors, blueprintOptions }) {
 
   return (
     <>
-      <PropertyRow
-        id="property-label"
-        label="Label"
-        required
-        layout="stacked"
-        error={errorFor('label')}
-        help="Shown next to the input on asset forms."
-      >
-        {(inputProps) => (
-          <TextInput
-            {...inputProps}
-            autoFocus
-            placeholder="e.g. Damage"
-            value={field.label}
-            onChange={(event) => changeLabel(event.target.value)}
-          />
-        )}
+      <PropertyRow label="Label" required error={errorFor('label')} help="Shown next to the input on asset forms.">
+        <TextInput
+          autoFocus
+          placeholder="e.g. Damage"
+          value={field.label}
+          onChange={(event) => changeLabel(event.target.value)}
+        />
       </PropertyRow>
 
       <PropertyRow
-        id="property-key"
         label="ID"
         required
-        layout="stacked"
         error={errorFor('key')}
         help="The name used in exported files. It follows the label until you change it."
       >
-        {(inputProps) => (
-          <TextInput
-            {...inputProps}
-            mono
-            placeholder="damage"
-            value={field.key}
-            onChange={(event) => change('key', { key: event.target.value }, { keyTouched: true })}
-          />
-        )}
+        <TextInput
+          placeholder="damage"
+          value={field.key}
+          onChange={(event) => change('key', { key: event.target.value }, { keyTouched: true })}
+        />
       </PropertyRow>
 
-      <PropertyRow id="property-type" label="Type" layout="stacked" help={FIELD_TYPES[field.type].description}>
-        {(inputProps) => (
-          <Select {...inputProps} options={PROPERTY_TYPE_OPTIONS} value={field.type} onChange={changeType} />
-        )}
+      <PropertyRow label="Type" help={FIELD_TYPES[field.type].description}>
+        <Select options={PROPERTY_TYPE_OPTIONS} value={field.type} onChange={changeType} />
       </PropertyRow>
 
       {supportsRequired(field.type) && (
-        <PropertyRow
-          id="property-required"
-          label="Required"
-          layout="stacked"
-          help="Assets can't be saved until this has a value."
-        >
-          {(inputProps) => (
-            <Toggle
-              {...inputProps}
-              checked={field.required}
-              onChange={(required) => change('required', { required })}
-            />
-          )}
+        <PropertyRow label="Required" help="Assets can't be saved until this has a value.">
+          <Checkbox checked={field.required} onChange={(required) => change('required', { required })} />
         </PropertyRow>
       )}
 
-      <PropertyRow id="property-help" label="Help text" layout="stacked" help="Optional hint shown under the input.">
-        {(inputProps) => (
-          <TextInput {...inputProps} value={field.help} onChange={(event) => change('help', { help: event.target.value })} />
-        )}
+      <PropertyRow label="Help text" help="Optional hint shown under the input.">
+        <TextInput value={field.help} onChange={(event) => change('help', { help: event.target.value })} />
       </PropertyRow>
 
       {hasTypeSettings && (
         <>
           <h3 className="settings-heading">{FIELD_TYPES[field.type].label} settings</h3>
-          <TypeSettings
-            target={field}
-            onChange={change}
-            errorFor={errorFor}
-            idPrefix="property"
-            blueprintOptions={blueprintOptions}
-          />
+          <TypeSettings target={field} onChange={change} errorFor={errorFor} blueprintOptions={blueprintOptions} />
         </>
       )}
     </>

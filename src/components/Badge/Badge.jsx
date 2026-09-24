@@ -1,4 +1,4 @@
-// tone: 'neutral' | 'accent' | 'success' | 'warning' | 'error' | 'info'
+// tone: 'neutral' | 'success' | 'warning' | 'error'
 function Badge({ tone = 'neutral', children }) {
   return <span className={`badge badge-${tone}`}>{children}</span>
 }

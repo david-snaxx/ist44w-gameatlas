@@ -1,26 +1,34 @@
-import Wordmark from '../Wordmark/Wordmark.jsx'
+import { Link } from 'react-router'
+import AppSidebar from '../AppSidebar/AppSidebar.jsx'
 
 /**
  * The layout every page uses: a frame (top bar, sidebar and bottom status bar) around a
  * rounded glass content zone that scrolls on its own.
  *
- * actions: global buttons at the end of the top bar
- * sidebar: navigation (e.g. <SidebarNav />)
- * breadcrumbs: shown at the start of the status bar
+ * actions: buttons at the end of the top bar
+ * crumbs: the breadcrumb trail at the start of the status bar, [{ label, to? }].
+ *   `to` is an app route; the last crumb is the current page.
  * status: optional short text at the end of the status bar
  */
-function AppShell({ actions, sidebar, breadcrumbs, status, children }) {
+function AppShell({ actions, crumbs, status, children }) {
   return (
     <div className="shell">
-      <div className="shell-brand">
-        <Wordmark />
-      </div>
+      <div className="shell-brand">GameAtlas</div>
       <header className="shell-bar">{actions}</header>
-      <aside className="shell-side">{sidebar}</aside>
+      <aside className="shell-side">
+        <AppSidebar />
+      </aside>
       <main className="shell-content">{children}</main>
       <footer className="shell-status">
-        {breadcrumbs}
-        {status && <div className="shell-status-text">{status}</div>}
+        <span>
+          {crumbs.map((crumb, index) => (
+            <span key={index}>
+              {index > 0 && ' › '}
+              {crumb.to ? <Link to={crumb.to}>{crumb.label}</Link> : crumb.label}
+            </span>
+          ))}
+        </span>
+        {status && <span className="push-right">{status}</span>}
       </footer>
     </div>
   )

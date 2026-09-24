@@ -1,9 +1,7 @@
-import { Download, FileArchive, Info, RotateCcw, Trash2, Upload } from 'lucide-react'
+import { Download, RotateCcw, Trash2, Upload } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { Link } from 'react-router'
 import AppShell from '../../components/AppShell/AppShell.jsx'
-import AppSidebar from '../../components/AppSidebar/AppSidebar.jsx'
-import Breadcrumbs from '../../components/Breadcrumbs/Breadcrumbs.jsx'
 import Button from '../../components/Button/Button.jsx'
 import ConfirmDialog from '../../components/ConfirmDialog/ConfirmDialog.jsx'
 import Section from '../../components/Section/Section.jsx'
@@ -104,14 +102,13 @@ function SettingsPage() {
 
   return (
     <AppShell
-      sidebar={<AppSidebar />}
-      breadcrumbs={<Breadcrumbs items={[{ label: 'Settings' }]} />}
+      crumbs={[{ label: 'Settings' }]}
       status={`${formatSize(storedSize)} saved in this browser`}
     >
       <div className={styles.page}>
         <header>
           <h1>Settings</h1>
-          <p className={styles.intro}>Back up your work, restore it, or start over.</p>
+          <p className="page-intro">Back up your work, restore it, or start over.</p>
         </header>
 
         <Section title="Your data">
@@ -123,18 +120,17 @@ function SettingsPage() {
               </Link>
             ))}
           </div>
-          <p className={styles.note}>
-            <Info size={16} strokeWidth={1.75} aria-hidden="true" />
+          <p className="small muted">
             Everything is saved in this browser only ({formatSize(storedSize)}). Clearing your browser data or switching
             computers loses it, so download a backup regularly.
           </p>
         </Section>
 
         <Section title="Back up and restore">
-          <div className={styles.row}>
+          <div className={styles.setting}>
             <div>
-              <h2 className={styles.rowTitle}>Download a backup</h2>
-              <p className={styles.rowText}>
+              <h2 className={styles.settingTitle}>Download a backup</h2>
+              <p className={styles.settingText}>
                 One file with every blueprint, asset and dialogue, including dialogue layouts. Keep it somewhere safe.
               </p>
             </div>
@@ -143,10 +139,10 @@ function SettingsPage() {
             </Button>
           </div>
 
-          <div className={styles.row}>
+          <div className={styles.setting}>
             <div>
-              <h2 className={styles.rowTitle}>Restore from a backup</h2>
-              <p className={styles.rowText}>Replaces everything in GameAtlas with the contents of a backup file.</p>
+              <h2 className={styles.settingTitle}>Restore from a backup</h2>
+              <p className={styles.settingText}>Replaces everything in GameAtlas with the contents of a backup file.</p>
             </div>
             <input ref={fileInputRef} type="file" accept=".json,application/json" hidden onChange={chooseBackupFile} />
             <Button icon={Upload} onClick={() => fileInputRef.current.click()}>
@@ -156,15 +152,14 @@ function SettingsPage() {
 
           {pendingBackup && (
             <div className={styles.preview}>
-              <FileArchive size={20} strokeWidth={1.75} aria-hidden="true" />
               <div className={styles.previewText}>
-                <p className={styles.previewName}>{pendingBackup.fileName}</p>
-                <p className={styles.rowText}>
+                <p>{pendingBackup.fileName}</p>
+                <p className={styles.settingText}>
                   {pendingBackup.backup.createdAt ? `Made ${formatDateTime(pendingBackup.backup.createdAt)}` : 'Date unknown'} ·{' '}
                   {describeContents(pendingBackup.backup)}
                 </p>
               </div>
-              <div className={styles.previewActions}>
+              <div className="row">
                 <Button onClick={() => setPendingBackup(null)}>Cancel</Button>
                 <Button variant="danger" icon={RotateCcw} onClick={askToRestore}>
                   Restore this backup
@@ -175,10 +170,10 @@ function SettingsPage() {
         </Section>
 
         <Section title="Start over">
-          <div className={styles.row}>
+          <div className={styles.setting}>
             <div>
-              <h2 className={styles.rowTitle}>Reset to example data</h2>
-              <p className={styles.rowText}>
+              <h2 className={styles.settingTitle}>Reset to example data</h2>
+              <p className={styles.settingText}>
                 Replaces everything with the example Item and Entity blueprints, their assets and the Merchant greeting
                 dialogue. Handy for demos.
               </p>
@@ -187,10 +182,10 @@ function SettingsPage() {
               Reset to examples
             </Button>
           </div>
-          <div className={styles.row}>
+          <div className={styles.setting}>
             <div>
-              <h2 className={styles.rowTitle}>Delete all data</h2>
-              <p className={styles.rowText}>Removes every blueprint, asset and dialogue so you can start from nothing.</p>
+              <h2 className={styles.settingTitle}>Delete all data</h2>
+              <p className={styles.settingText}>Removes every blueprint, asset and dialogue so you can start from nothing.</p>
             </div>
             <Button variant="danger" icon={Trash2} onClick={askToDeleteAll}>
               Delete everything
@@ -199,17 +194,18 @@ function SettingsPage() {
         </Section>
       </div>
 
-      <ConfirmDialog
-        open={Boolean(confirmation)}
-        title={confirmation?.title}
-        message={confirmation?.message}
-        confirmLabel={confirmation?.confirmLabel}
-        onCancel={() => setConfirmation(null)}
-        onConfirm={() => {
-          confirmation.run()
-          setConfirmation(null)
-        }}
-      />
+      {confirmation && (
+        <ConfirmDialog
+          title={confirmation.title}
+          message={confirmation.message}
+          confirmLabel={confirmation.confirmLabel}
+          onCancel={() => setConfirmation(null)}
+          onConfirm={() => {
+            confirmation.run()
+            setConfirmation(null)
+          }}
+        />
+      )}
     </AppShell>
   )
 }

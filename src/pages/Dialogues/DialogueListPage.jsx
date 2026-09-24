@@ -21,14 +21,13 @@ import { formatDateTime } from '../../utils/formatDate.js'
 import { plural } from '../../utils/plural.js'
 
 const COLUMNS = [
-  { key: 'name', label: 'Name', sortable: true },
-  { key: 'key', label: 'ID', sortable: true, mono: true },
-  { key: 'lines', label: 'Lines', sortable: true, numeric: true },
-  { key: 'choices', label: 'Choices', sortable: true, numeric: true },
+  { key: 'name', label: 'Name' },
+  { key: 'key', label: 'ID' },
+  { key: 'lines', label: 'Lines' },
+  { key: 'choices', label: 'Choices' },
   {
     key: 'problems',
     label: 'Status',
-    sortable: true,
     render: (row) =>
       row.problems > 0 ? (
         <Badge tone="warning">{plural(row.problems, 'problem')}</Badge>
@@ -36,7 +35,7 @@ const COLUMNS = [
         <Badge tone="success">Ready</Badge>
       ),
   },
-  { key: 'updated', label: 'Updated', sortable: true, mono: true, render: (row) => formatDateTime(row.updated) },
+  { key: 'updated', label: 'Updated', render: (row) => formatDateTime(row.updated) },
 ]
 
 /** Every dialogue in a table (/dialogues). */

@@ -3,8 +3,6 @@ import { Copy, Download, RotateCcw, Save, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import AppShell from '../../components/AppShell/AppShell.jsx'
-import AppSidebar from '../../components/AppSidebar/AppSidebar.jsx'
-import Breadcrumbs from '../../components/Breadcrumbs/Breadcrumbs.jsx'
 import Button from '../../components/Button/Button.jsx'
 import ConfirmDialog from '../../components/ConfirmDialog/ConfirmDialog.jsx'
 import PropertyRow from '../../components/form/PropertyRow.jsx'
@@ -141,9 +139,9 @@ function DialogueEditor({ dialogueKey, imported, origin, originName }) {
     if (!blueprint) return null
     return assets
       .filter((asset) => asset.schemaId === blueprint.id)
-      .map((asset) => ({ value: asset.key, label: assetLabel(asset, blueprint), hint: asset.key }))
+      .map((asset) => ({ value: asset.key, label: assetLabel(asset, blueprint) }))
   }
-  const blueprintOptions = blueprints.map((blueprint) => ({ value: blueprint.id, label: blueprint.name, hint: blueprint.id }))
+  const blueprintOptions = blueprints.map((blueprint) => ({ value: blueprint.id, label: blueprint.name }))
 
   const graphProblems = validateDialogueGraph({ ...details, nodes, edges }, { blueprintIds, assetKeys })
   const problemsByNode = {}
@@ -172,7 +170,6 @@ function DialogueEditor({ dialogueKey, imported, origin, originName }) {
         title="Dialogue not found"
         message={`There's no dialogue with the ID "${dialogueKey}".`}
         back={{ to: '/dialogues', label: 'All dialogues' }}
-        crumbs={[{ label: 'Dialogues', to: '/dialogues' }]}
       />
     )
   }
@@ -303,14 +300,13 @@ function DialogueEditor({ dialogueKey, imported, origin, originName }) {
   return (
     <AppShell
       actions={<TopBarActions noun="dialogue" newPath="/dialogues/new" importFile={parseDialogueFile} />}
-      sidebar={<AppSidebar />}
-      breadcrumbs={<Breadcrumbs items={[{ label: 'Dialogues', to: '/dialogues' }, { label: title }]} />}
+      crumbs={[{ label: 'Dialogues', to: '/dialogues' }, { label: title }]}
       status={status}
     >
       {/* React 19 lets a context object be used directly as its provider */}
       <DialogueEditorContext value={editorContext}>
         <div className="panes" style={{ '--panes': 'minmax(0, 1fr) 340px' }}>
-          <Section title="Dialogue tree" bodyClassName="flush canvas">
+          <Section title="Dialogue tree">
             <DialogueCanvas nodes={nodes} edges={edges} setNodes={setNodes} setEdges={setEdges} />
           </Section>
 
@@ -322,7 +318,6 @@ function DialogueEditor({ dialogueKey, imported, origin, originName }) {
                   <Button
                     variant="ghost"
                     icon={Copy}
-                    aria-label={`Duplicate ${baseline.name}`}
                     title="Duplicate dialogue"
                     onClick={() =>
                       navigate('/dialogues/new', {
@@ -334,7 +329,6 @@ function DialogueEditor({ dialogueKey, imported, origin, originName }) {
                 <Button
                   variant="ghost"
                   icon={Download}
-                  aria-label="Download dialogue file"
                   title="Download dialogue file"
                   onClick={handleDownload}
                 />
@@ -353,7 +347,6 @@ function DialogueEditor({ dialogueKey, imported, origin, originName }) {
                     variant="danger"
                     icon={Trash2}
                     className="push-right"
-                    aria-label="Delete dialogue"
                     title="Delete dialogue"
                     onClick={() => setConfirmDelete(true)}
                   />
@@ -365,76 +358,50 @@ function DialogueEditor({ dialogueKey, imported, origin, originName }) {
               {imported && !baseline && (
                 <ImportNotice isDuplicate={isDuplicate} originName={originName} />
               )}
-              <PropertyRow id="dialogue-name" label="Name" required layout="stacked" error={detailError('name')}>
-                {(inputProps) => (
-                  <TextInput
-                    {...inputProps}
-                    placeholder="e.g. Merchant greeting"
-                    value={details.name}
-                    onChange={(event) => changeName(event.target.value)}
-                  />
-                )}
+              <PropertyRow label="Name" required error={detailError('name')}>
+                <TextInput
+                  id="dialogue-name"
+                  placeholder="e.g. Merchant greeting"
+                  value={details.name}
+                  onChange={(event) => changeName(event.target.value)}
+                />
               </PropertyRow>
               <PropertyRow
-                id="dialogue-key"
                 label="ID"
                 required
-                layout="stacked"
                 error={detailError('key')}
                 help="How the game finds this dialogue. It follows the name until you change it."
               >
-                {(inputProps) => (
-                  <TextInput
-                    {...inputProps}
-                    mono
-                    placeholder="merchant_greeting"
-                    value={details.key}
-                    onChange={(event) => {
-                      setKeyTouched(true)
-                      changeDetails('key', { key: event.target.value })
-                    }}
-                  />
-                )}
+                <TextInput
+                  id="dialogue-key"
+                  placeholder="merchant_greeting"
+                  value={details.key}
+                  onChange={(event) => {
+                    setKeyTouched(true)
+                    changeDetails('key', { key: event.target.value })
+                  }}
+                />
               </PropertyRow>
-              <PropertyRow id="dialogue-description" label="Description" layout="stacked">
-                {(inputProps) => (
-                  <TextArea
-                    {...inputProps}
-                    placeholder="When does this conversation happen?"
-                    value={details.description}
-                    onChange={(event) => changeDetails('description', { description: event.target.value })}
-                  />
-                )}
+              <PropertyRow label="Description">
+                <TextArea
+                  placeholder="When does this conversation happen?"
+                  value={details.description}
+                  onChange={(event) => changeDetails('description', { description: event.target.value })}
+                />
               </PropertyRow>
-              <PropertyRow
-                id="dialogue-speakers"
-                label="Speakers come from"
-                layout="stacked"
-                help="Lines pick their speaker from this blueprint's assets."
-              >
-                {(inputProps) => (
-                  <Select
-                    {...inputProps}
-                    options={[{ value: '', label: 'No speakers (narrator only)' }, ...blueprintOptions]}
-                    value={details.speakerBlueprint}
-                    onChange={(speakerBlueprint) => changeDetails('speakerBlueprint', { speakerBlueprint })}
-                  />
-                )}
+              <PropertyRow label="Speakers come from" help="Lines pick their speaker from this blueprint's assets.">
+                <Select
+                  options={[{ value: '', label: 'No speakers (narrator only)' }, ...blueprintOptions]}
+                  value={details.speakerBlueprint}
+                  onChange={(speakerBlueprint) => changeDetails('speakerBlueprint', { speakerBlueprint })}
+                />
               </PropertyRow>
-              <PropertyRow
-                id="dialogue-items"
-                label="Items come from"
-                layout="stacked"
-                help="“Give item” actions pick from this blueprint's assets."
-              >
-                {(inputProps) => (
-                  <Select
-                    {...inputProps}
-                    options={[{ value: '', label: 'No items' }, ...blueprintOptions]}
-                    value={details.itemBlueprint}
-                    onChange={(itemBlueprint) => changeDetails('itemBlueprint', { itemBlueprint })}
-                  />
-                )}
+              <PropertyRow label="Items come from" help="“Give item” actions pick from this blueprint's assets.">
+                <Select
+                  options={[{ value: '', label: 'No items' }, ...blueprintOptions]}
+                  value={details.itemBlueprint}
+                  onChange={(itemBlueprint) => changeDetails('itemBlueprint', { itemBlueprint })}
+                />
               </PropertyRow>
 
               <h2 className="subhead">Checks</h2>
@@ -445,14 +412,15 @@ function DialogueEditor({ dialogueKey, imported, origin, originName }) {
         </div>
       </DialogueEditorContext>
 
-      <ConfirmDialog
-        open={confirmDelete}
-        title="Delete dialogue?"
-        message={`Delete dialogue "${baseline?.name}"? This can't be undone.`}
-        confirmLabel="Delete dialogue"
-        onCancel={() => setConfirmDelete(false)}
-        onConfirm={handleDelete}
-      />
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Delete dialogue?"
+          message={`Delete dialogue "${baseline.name}"? This can't be undone.`}
+          confirmLabel="Delete dialogue"
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={handleDelete}
+        />
+      )}
 
       <UnsavedChangesDialog blocker={blocker} name={title} />
     </AppShell>

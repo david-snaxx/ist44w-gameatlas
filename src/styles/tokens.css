@@ -12,7 +12,6 @@
   --color-bg-input: #323234;
   --color-bg-input-hover: #38383a;
   --color-border: #3a3a3c;
-  --color-border-strong: #4a4a4d;
   --color-text: #e6e6e6;
   --color-text-muted: #a8a8a8;
   --color-text-subtle: #969696; /* app/panel backgrounds only, never on inputs (4.5:1+ on glass panels) */
@@ -35,16 +34,8 @@
   --color-info: #527592;
   --color-info-text: #8daac4;
 
-  /* Graph (Phase 4). Neutral until color coding is chosen. */
-  --color-node-line: var(--color-bg-raised);
-  --color-node-choice: var(--color-bg-raised);
-  --color-node-action: var(--color-bg-raised);
-  --color-node-end: var(--color-bg-raised);
-  --color-node-start: var(--color-bg-raised);
-  --color-node-condition: var(--color-bg-raised);
+  /* Dialogue editor: connection lines between nodes */
   --color-edge: #5a5a5d;
-  --color-canvas-dot: #3a3a3c;
-  --color-canvas-bg: rgb(27 27 28 / 0.72);
 
   /* Typography */
   --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -90,7 +81,7 @@
   /*
    * Glass cards. Pages are flat (see STYLE-GUIDELINES §6.1): the only cards left are the dashboard's
    * three section tiles, kept deliberately distinct as entry points. Don't reintroduce
-   * these elsewhere. Solid --color-bg-panel is the fallback.
+   * these elsewhere.
    */
   --glass-panel-bg: rgb(37 37 38 / 0.62);
   --glass-panel-blur: blur(24px) saturate(130%);
@@ -109,18 +100,8 @@
   --glow-teal: rgb(31 82 93 / 0.38);
   --glow-info: rgb(82 117 146 / 0.22);
 
-  /* Motion */
-  --duration-fast: 150ms;
-  --ease: cubic-bezier(0.2, 0, 0, 1);
-
   /* Layers */
   --z-panel: 100;
-  --z-dropdown: 300; /* above side panels, since dropdowns open from inside them */
+  --z-dropdown: 300; /* the dialogue editor's "Add next step" menu */
   --z-toast: 400;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  :root {
-    --duration-fast: 0ms;
-  }
 }

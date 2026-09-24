@@ -76,6 +76,10 @@ tools, and the hand-written `[Serializable]` class that normally sits between th
    keeps `toExport()` unchanged, leaves Godot/Unreal open as future work — and means that if the Unity package
    slips, there is still a complete working app rather than a half-integrated one.
 6. **MVP over polish.** Solo dev, fixed deadline. Get each phase working end-to-end before styling it.
+7. **Simple code over polish** (2026-09-23 and 24). The owner is learning React, so the code has to stay easy to
+   read. That means no accessibility layer (no `aria-*`, roles, focus management or keyboard handlers), no
+   animations, the browser's own controls (`<select>`, checkbox, `<dialog>`) instead of custom widgets, and no
+   props or CSS for small visual tweaks. See STYLE-GUIDELINES §8, §12 and §13.
 
 ---
 
@@ -84,7 +88,7 @@ tools, and the hand-written `[Serializable]` class that normally sits between th
 | Layer | Choice | Notes |
 |---|---|---|
 | Frontend | **React 19 + Vite 8** (JavaScript) | Already scaffolded in this repo. Stay in JS to keep the learning curve down; TypeScript is an option later. |
-| Styling | Plain CSS + CSS Modules + design tokens | No UI library. All rules in `docs/STYLE-GUIDELINES.md`; tokens in `src/styles/tokens.css`. Icons: `lucide-react`. Fonts: `@fontsource/jetbrains-mono`, `@fontsource/silkscreen`. |
+| Styling | Plain CSS: design tokens, one global stylesheet (one block per shared component), CSS Modules for page-only layout | No UI library. All rules in `docs/STYLE-GUIDELINES.md`; tokens in `src/styles/tokens.css`. Icons: `lucide-react`. Fonts: `@fontsource/jetbrains-mono`, `@fontsource/silkscreen`. |
 | Node.js | **22 or 24 LTS** (recommended) | Only WebStorm's bundled Node 20.15 is installed right now; Vite 8 needs 20.19+. |
 | Routing | `react-router` (v8) | Added early with the blueprint builder. Uses a data router (`createBrowserRouter`) so pages can block navigation when changes are unsaved. |
 | Graph UI | **React Flow** (`@xyflow/react` v12) | The dialogue tree editor. Themed through its `--xy-*` CSS variables; every node is a custom component. |
@@ -121,12 +125,12 @@ gameatlas/
 │   └── unity-integration.md  # (Phase 5) Install the package, generate C#, import assets, play dialogue
 ├── frontend/              # Move the current Vite app here (src/, index.html, package.json, ...)
 │   └── src/
-│       ├── styles/        # ✔ tokens.css (design tokens) + base.css (reset, glass, background glows)
-│       ├── components/    # ✔ Shared UI: AppShell, SidebarNav, Panel, Button, Table, Toast, SidePanel, …
+│       ├── styles/        # ✔ tokens.css (design tokens) + base.css (reset, utilities, one block per shared component)
+│       ├── components/    # ✔ Shared UI: AppShell, AppSidebar, Section, Button, Table, Toast, SidePanel, …
 │       │   └── form/      # ✔ Input components, PropertyRow, FieldInput, ListInput, FormRenderer, ValidationSummary
 │       ├── schema/        # ✔ Field-type registry, validation, blueprint drafts, blueprintStore (localStorage until Phase 2)
 │       ├── data/          # ✔ Assets and dialogues: stores (localStorage until Phase 2), data ↔ form values, dialogue graph model, export/import
-│       ├── pages/         # ✔ Route-level screens: Blueprints (list + builder), Dashboard (home), Settings, Assets (browser + view + editor), Dialogues (list + tree editor), StyleShowcase, NotFound
+│       ├── pages/         # ✔ Route-level screens: Blueprints (list + builder), Dashboard (home), Settings, Assets (browser + view + editor), Dialogues (list + tree editor), NotFound
 │       ├── utils/         # ✔ Small helpers (cx)
 │       ├── unity/         # (Phase 5) C# code generation: type mapping + templates (pure functions, no UI)
 │       └── api/           # (Phase 2) fetch wrappers for the REST API
@@ -453,7 +457,7 @@ Dates assume the 12/1 deadline and are targets. Each phase ends with a **demoabl
 - [ ] Move the Vite app into `frontend/`; confirm `npm run dev` still works
 - [x] Remove Vite template content (hero image, counter, logos, demo CSS, public icons)
 - [x] Add `CLAUDE.md` and `docs/PLAN.md`
-- [x] Design system: `docs/STYLE-GUIDELINES.md`, design tokens, shared components, `AppShell`, and the style showcase page
+- [x] Design system: `docs/STYLE-GUIDELINES.md`, design tokens, shared components, `AppShell`, and the style showcase page (the showcase was deleted on 2026-09-24)
 - [ ] Short React warm-up: components, props, state, lists and keys, controlled inputs (react.dev "Learn" tutorial)
 
 ### Phase 1: Web-form document editor, frontend only (9/14 → 10/4) · Deliverable **Ga.1**
@@ -602,7 +606,8 @@ React concepts. Keep architectural decisions in this document.
 | Hosting cost/knowledge unknown | Deployment delays | Pick hosting by end of Phase 3; do a throwaway deploy of a "hello" backend early |
 | MySQL-specific unfamiliarity | Minor | JSON column + JPA keeps SQL surface small; Postgres is a viable swap |
 | Tooling: installed Node (20.15) is below Vite 8's minimum | Build warnings; npm skips Vite's native Windows package | Install Node 22/24 LTS, then delete `node_modules` and run `npm install` |
-| Glass/glow styling hurts readability as colors get tuned | Accessibility regressions | Re-check WCAG AA whenever glass or glow tokens change (STYLE-GUIDELINES §5.6) |
+| Glass/glow styling hurts readability as colors get tuned | Text gets hard to read | Check readability over the brightest glow whenever glass or glow tokens change (STYLE-GUIDELINES §5.6) |
+| No accessibility layer (decision of 2026-09-23) | Keyboard-only or screen-reader users struggle; an accessibility review would fail | Native elements (`<button>`, `<select>`, checkbox, `<dialog>`) keep basic keyboard use working. Revisit only if Phase 6 testing or the course requires it, and log the change here |
 | Phase 5 adds a **third codebase in a third language** (C#/Unity) with its own toolchain | Phase 5 slips and takes Phase 6 with it | Phase 5 is layered by risk: (a) generation is frontend-only, (b) the importer is editor-only, (c) the runtime is last and is the designated cut. Any one of them alone is a demo. |
 | TMP character-index mapping for effect tags | Effects render on the wrong characters or throw | Small fixed effect set; strip GameAtlas tags *before* TMP, map indices *after* `ForceMeshUpdate`; if it fights back, ship color/bold only and document the rest as future work |
 | Unity version churn | Package breaks on a version bump | Target one LTS (Unity 6), state it in the package README, don't upgrade mid-project |
@@ -654,6 +659,10 @@ Add new entries at the bottom. Format: `date · decision · why`.
 - 2026-09-17 · **Shared components have no CSS Modules**; all component styling moved into global classes in `src/styles/base.css`, with shared shapes (flex rows, columns, gaps, text roles) written once as grouped selectors · User request to cut duplication. 25 stylesheets became 1, and a look is now defined once and reused by name; pages keep scoped modules for layout. Deliberate trade: slightly less per-component variation, and no scoping, so class names carry a `.thing-part` / `.is-state` convention instead.
 - 2026-09-17 · **Pages are flat.** The `Panel` glass card is replaced by a `Section` with no fill, border or radius; stacked sections are separated by the rule under their title, side-by-side panes by a vertical rule in the gutter (STYLE-GUIDELINES §6.1) · User request to simplify. Only two exceptions survive: the dashboard's three entry cards, and the graph canvas's hairline (its dot grid needs an edge). Nested cards inside a glass content zone were doing the same job twice.
 - 2026-09-17 · Settings page (`/settings`) with backup (one file of all stored data, format `{ app, type: "backup", formatVersion, createdAt, blueprints, assets, dialogues }`), restore (replace-all after confirmation), reset to examples and delete all · User request; data only lives in localStorage until Phase 2, so backups are the safety net.
+- 2026-09-23 · **Simplification refactor: no accessibility layer, no motion, fewer tweaks.** Removed every `aria-*` attribute, `role`, screen-reader-only text, focus trap/restore, custom focus ring, keyboard handler (table rows, dropdown arrows, Esc on the side panel and graph menu) and `prefers-reduced-motion` rule; removed all transitions and animations; removed small styling tweaks (icons in notices, toasts and errors, mono IDs and numbers, right-aligned number columns, invalid-input borders, input hover, custom scrollbars, JSON syntax colors and tree view, the idle sort icon). Shared component props were cut to what callers need: `AppShell` takes `crumbs` and renders the sidebar itself (`Breadcrumbs`, `Wordmark` and `SidebarNav` were folded in); `PropertyRow` takes the input as plain children (no render function, `id` or `layout`, since labels stack by container query); `ConfirmDialog` and `SidePanel` have no `open` prop and are rendered conditionally; `Table` columns are `{ key, label, render? }` and all sort; `FormRenderer` input ids are always `field-<path>` · User request: the owner is learning React and found the code hard to follow, and asked for as much as possible to be removed without losing major functionality. Native elements still give basic keyboard use. See STYLE-GUIDELINES §8, §12.
+- 2026-09-24 · **Native form controls:** `Select` is now the browser's `<select>` (reference dropdowns lose their search box and the grey IDs next to names), and the `Toggle` switch became `Checkbox`, a plain checkbox · User decision. Removes the largest custom widget (a portal, positioning and close-on-scroll logic) and its CSS.
+- 2026-09-24 · **Style showcase deleted** (`/dev/styles`, the sidebar's Developer section and the dashboard footnote) · User decision; the real pages are now the reference, so it was about 1,100 lines of upkeep.
+- 2026-09-24 · **`base.css` is one block per component**, replacing the shared "shape groups" (all flex rows in one rule, all gaps in another) from the 2026-09-17 entry · User decision. Everything that styles a component is now in one place, at the cost of repeating a few `display`/`gap` lines. Page-only classes that had become tweaks were dropped (`.flush`, `.canvas`, `.missing`, `.empty-box`, `.stack-start`, `.toolbar-filter`, `.option-list`); the dialogue canvas now uses React Flow's own dark theme apart from edge colors, and the unused `--color-node-*`, canvas, `--color-border-strong` and motion tokens were removed.
 
 ---
 

@@ -16,30 +16,11 @@
   border-color: var(--color-error-text);
 }
 
-/* Header strip colors come from tokens (all neutral until color coding is chosen) */
 .start {
-  --node-color: var(--color-node-start);
   width: 150px;
 }
 
-.line {
-  --node-color: var(--color-node-line);
-}
-
-.choice {
-  --node-color: var(--color-node-choice);
-}
-
-.condition {
-  --node-color: var(--color-node-condition);
-}
-
-.action {
-  --node-color: var(--color-node-action);
-}
-
 .end {
-  --node-color: var(--color-node-end);
   width: 180px;
 }
 
@@ -49,65 +30,31 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  height: 28px;
+  min-height: var(--control-height);
   padding: 0 var(--space-1) 0 var(--space-3);
-  background: var(--node-color);
-  border-bottom: 1px solid var(--color-border);
-  border-radius: calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px) 0 0;
   font-size: var(--text-sm);
   font-weight: 600;
   cursor: grab;
-}
-
-.header:last-child {
-  border-bottom: none;
-  border-radius: calc(var(--radius-md) - 1px);
 }
 
 .title {
   flex: 1;
 }
 
-.remove {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  background: none;
-  border: none;
-  border-radius: var(--radius-sm);
-  color: var(--color-text-muted);
-  cursor: pointer;
-}
-
-.remove:hover {
-  background: var(--color-bg-raised);
-  color: var(--color-text);
-}
-
+/* A size container, so property rows inside a node put their labels on top */
 .body {
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
-  align-items: stretch;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3) var(--space-3);
+  border-top: 1px solid var(--color-border);
   cursor: default;
 }
 
+/* Keeps "Add response" its natural width */
 .body > button {
   align-self: flex-start;
-}
-
-.body textarea {
-  min-height: 64px;
-}
-
-.fieldLabel {
-  font-size: var(--text-sm);
-  font-weight: 500;
-  color: var(--color-text-muted);
 }
 
 /* A row with its own output handle: it reaches the node's right edge so the handle sits on the border */
@@ -122,57 +69,17 @@
 
 .branch {
   justify-content: flex-end;
-  min-height: 24px;
   font-size: var(--text-xs);
-  color: var(--color-text-muted);
-}
-
-.smallButton {
-  width: 26px;
-  height: 26px;
-  flex-shrink: 0;
-}
-
-.endText {
-  font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
 
 .problems {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin: 0;
   padding: var(--space-2) var(--space-3);
   border-top: 1px solid var(--color-border);
-  list-style: none;
 }
 
-.problems li {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-1);
-  font-size: var(--text-xs);
-  color: var(--color-error-text);
-}
-
-.problems svg {
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-/* Two classes so these win over React Flow's own handle styles */
+/* Bigger than React Flow's default dots, so they're easier to grab. Two classes so this wins over React Flow's styles */
 .node .handle {
   width: 10px;
   height: 10px;
-  background: var(--color-bg-input);
-  border: 1px solid var(--color-border-strong);
-  transition:
-    background-color var(--duration-fast) var(--ease),
-    border-color var(--duration-fast) var(--ease);
-}
-
-.node .handle:hover {
-  background: var(--color-accent-text);
-  border-color: var(--color-accent-text);
 }

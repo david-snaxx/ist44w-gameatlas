@@ -1,10 +1,8 @@
-import { ArrowRight, Box, CircleCheck, LayoutList, MessagesSquare } from 'lucide-react'
+import { ArrowRight, Box, LayoutList, MessagesSquare } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import AppShell from '../../components/AppShell/AppShell.jsx'
-import AppSidebar from '../../components/AppSidebar/AppSidebar.jsx'
 import Badge from '../../components/Badge/Badge.jsx'
-import Breadcrumbs from '../../components/Breadcrumbs/Breadcrumbs.jsx'
 import LinkList from '../../components/LinkList/LinkList.jsx'
 import Section from '../../components/Section/Section.jsx'
 import { assetLabel, assetPath, countAssetProblems, referenceKeysFor } from '../../data/assetData.js'
@@ -29,17 +27,14 @@ function greetingFor(date) {
 
 /** One of the big cards linking to a section of the app. */
 function SectionCard({ icon: Icon, title, description, value, unit, detail, toFix, link, children }) {
-  const titleId = `dashboard-${title.toLowerCase()}`
   return (
-    <section className={styles.card} aria-labelledby={titleId}>
+    <section className={styles.card}>
       <div className={styles.cardHeader}>
         <span className={styles.iconChip}>
-          <Icon size={18} strokeWidth={1.75} aria-hidden="true" />
+          <Icon size={18} />
         </span>
         <div>
-          <h2 id={titleId} className={styles.cardTitle}>
-            {title}
-          </h2>
+          <h2 className={styles.cardTitle}>{title}</h2>
           <p className={styles.cardDescription}>{description}</p>
         </div>
       </div>
@@ -62,7 +57,7 @@ function SectionCard({ icon: Icon, title, description, value, unit, detail, toFi
         {link && (
           <Link to={link.to} className={styles.footerLink}>
             {link.label}
-            <ArrowRight size={14} strokeWidth={1.75} aria-hidden="true" />
+            <ArrowRight size={14} />
           </Link>
         )}
       </div>
@@ -115,28 +110,23 @@ function DashboardPage() {
     ...assetStatus
       .filter((status) => status.problems > 0 || status.outdated)
       .map(({ asset, blueprint, problems }) => ({
-        id: asset.id,
         icon: Box,
         label: assetLabel(asset, blueprint),
         hint: `${blueprint.name} asset · ${problems > 0 ? plural(problems, 'problem') : 'saved with an older blueprint'}`,
-        tone: problems > 0 ? 'error' : 'warning',
         to: assetPath(asset.schemaId, asset.key),
       })),
     ...dialogueStatus
       .filter((status) => status.problems > 0)
       .map(({ dialogue, problems }) => ({
-        id: dialogue.id,
         icon: MessagesSquare,
         label: dialogue.name,
         hint: `Dialogue · ${plural(problems, 'problem')}`,
-        tone: 'error',
         to: `/dialogues/${dialogue.key}`,
       })),
   ]
 
   const recentlyUpdated = [
     ...assetStatus.map(({ asset, blueprint }) => ({
-      id: asset.id,
       icon: Box,
       label: assetLabel(asset, blueprint),
       hint: `${blueprint.name} asset`,
@@ -144,7 +134,6 @@ function DashboardPage() {
       to: assetPath(asset.schemaId, asset.key),
     })),
     ...dialogues.map((dialogue) => ({
-      id: dialogue.id,
       icon: MessagesSquare,
       label: dialogue.name,
       hint: 'Dialogue',
@@ -155,7 +144,7 @@ function DashboardPage() {
     // ISO dates sort correctly as plain text
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     .slice(0, MAX_LIST_ITEMS)
-    .map((item) => ({ ...item, meta: formatDateTime(item.updatedAt) }))
+    .map((item) => ({ ...item, hint: `${item.hint} · ${formatDateTime(item.updatedAt)}` }))
 
   const quickCreate = [
     { id: 'dialogue', icon: MessagesSquare, label: 'New dialogue', to: '/dialogues/new' },
@@ -174,7 +163,7 @@ function DashboardPage() {
       : `${needsAttention.length === 1 ? '1 item needs' : `${needsAttention.length} items need`} attention`
 
   return (
-    <AppShell sidebar={<AppSidebar />} breadcrumbs={<Breadcrumbs items={[{ label: 'Home' }]} />} status={status}>
+    <AppShell crumbs={[{ label: 'Home' }]} status={status}>
       <div className={styles.page}>
         <header>
           <p className={styles.eyebrow}>
@@ -194,32 +183,23 @@ function DashboardPage() {
             toFix={assetsToFix}
           >
             {blueprints.length > 0 ? (
-              <ul className={styles.blueprintLinks}>
-                <li>
-                  <Link to="/assets" className={styles.blueprintLink}>
-                    <span className={styles.blueprintName}>All assets</span>
-                    <span className={styles.count}>{assets.length}</span>
-                    <ArrowRight size={14} strokeWidth={1.75} aria-hidden="true" />
-                  </Link>
-                </li>
+              <div>
+                <Link to="/assets" className={styles.blueprintLink}>
+                  <span className={styles.blueprintName}>All assets</span>
+                  <span className="muted">{assets.length}</span>
+                  <ArrowRight size={14} />
+                </Link>
                 {blueprints.map((blueprint) => (
-                  <li key={blueprint.id}>
-                    <Link to={`/blueprints/${blueprint.id}/assets`} className={styles.blueprintLink}>
-                      <span className={styles.blueprintName}>{blueprint.name}</span>
-                      <span className={styles.count}>
-                        {assets.filter((asset) => asset.schemaId === blueprint.id).length}
-                      </span>
-                      <ArrowRight size={14} strokeWidth={1.75} aria-hidden="true" />
-                    </Link>
-                  </li>
+                  <Link key={blueprint.id} to={`/blueprints/${blueprint.id}/assets`} className={styles.blueprintLink}>
+                    <span className={styles.blueprintName}>{blueprint.name}</span>
+                    <span className="muted">{assets.filter((asset) => asset.schemaId === blueprint.id).length}</span>
+                    <ArrowRight size={14} />
+                  </Link>
                 ))}
-              </ul>
+              </div>
             ) : (
               <p className={styles.cardDetail}>
-                <Link to="/blueprints/new" className={styles.inlineLink}>
-                  Create a blueprint
-                </Link>{' '}
-                to start adding assets.
+                <Link to="/blueprints/new">Create a blueprint</Link> to start adding assets.
               </p>
             )}
           </SectionCard>
@@ -256,8 +236,8 @@ function DashboardPage() {
               <div className={styles.quickGrid}>
                 {quickCreate.map((item) => (
                   <Link key={item.id} to={item.to} className={styles.quickLink}>
-                    <item.icon size={16} strokeWidth={1.75} aria-hidden="true" />
-                    <span className={styles.quickLabel}>{item.label}</span>
+                    <item.icon size={16} />
+                    {item.label}
                   </Link>
                 ))}
               </div>
@@ -275,22 +255,11 @@ function DashboardPage() {
                   )}
                 </>
               ) : (
-                <p className={styles.allClear}>
-                  <CircleCheck size={16} strokeWidth={1.75} aria-hidden="true" />
-                  Everything is ready to export.
-                </p>
+                <p className={styles.allClear}>Everything is ready to export.</p>
               )}
             </Section>
           </div>
         </div>
-
-        <p className={styles.devNote}>
-          Working on GameAtlas itself? The{' '}
-          <Link to="/dev/styles" className={styles.inlineLink}>
-            style showcase
-          </Link>{' '}
-          shows every color and component.
-        </p>
       </div>
     </AppShell>
   )

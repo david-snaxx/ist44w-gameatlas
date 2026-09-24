@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, CircleAlert, Copy, Plus, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Copy, Plus, Trash2 } from 'lucide-react'
 import Badge from '../../components/Badge/Badge.jsx'
 import Button from '../../components/Button/Button.jsx'
 import { describeType, supportsRequired } from '../../schema/fieldTypes.js'
@@ -12,38 +12,27 @@ import styles from './PropertyList.module.css'
  */
 function PropertyList({ fields, errors, blueprintNames, onEdit, onAdd, onMove, onDuplicate, onRemove }) {
   return (
-    <ul className={styles.list}>
+    <div className={styles.list}>
       {fields.map((field, index) => {
         const name = field.label || 'Untitled property'
         const problemCount = Object.keys(errors[field.uid] ?? {}).length
 
         return (
-          <li key={field.uid}>
-            <div className={cx(styles.row, problemCount > 0 && styles.rowInvalid)}>
-              <button type="button" className={styles.main} onClick={() => onEdit(field.uid)}>
-                <span className={cx(styles.label, !field.label && styles.untitled)}>
+          <div key={field.uid}>
+            <div className={cx(styles.property, problemCount > 0 && styles.invalid)}>
+              <div className={styles.main} onClick={() => onEdit(field.uid)}>
+                <span className={cx(!field.label && 'muted')}>
                   {name}
-                  {field.required && supportsRequired(field.type) && (
-                    <>
-                      <span className={styles.required} aria-hidden="true">*</span>
-                      <span className="sr-only">(required)</span>
-                    </>
-                  )}
+                  {field.required && supportsRequired(field.type) && ' *'}
                 </span>
                 <span className={styles.key}>{field.key}</span>
-                {problemCount > 0 && (
-                  <span className={styles.problems}>
-                    <CircleAlert size={14} strokeWidth={1.75} aria-hidden="true" />
-                    {plural(problemCount, 'problem')}
-                  </span>
-                )}
-              </button>
+                {problemCount > 0 && <span className="field-error">{plural(problemCount, 'problem')}</span>}
+              </div>
               <Badge>{describeType(field, blueprintNames)}</Badge>
-              <div className={styles.actions}>
+              <div className="row">
                 <Button
                   variant="ghost"
                   icon={ArrowUp}
-                  aria-label={`Move ${name} up`}
                   title="Move up"
                   disabled={index === 0}
                   onClick={() => onMove(field.uid, -1)}
@@ -51,25 +40,12 @@ function PropertyList({ fields, errors, blueprintNames, onEdit, onAdd, onMove, o
                 <Button
                   variant="ghost"
                   icon={ArrowDown}
-                  aria-label={`Move ${name} down`}
                   title="Move down"
                   disabled={index === fields.length - 1}
                   onClick={() => onMove(field.uid, 1)}
                 />
-                <Button
-                  variant="ghost"
-                  icon={Copy}
-                  aria-label={`Duplicate ${name}`}
-                  title="Duplicate"
-                  onClick={() => onDuplicate(field.uid)}
-                />
-                <Button
-                  variant="ghost"
-                  icon={Trash2}
-                  aria-label={`Remove ${name}`}
-                  title="Remove"
-                  onClick={() => onRemove(field.uid)}
-                />
+                <Button variant="ghost" icon={Copy} title="Duplicate" onClick={() => onDuplicate(field.uid)} />
+                <Button variant="ghost" icon={Trash2} title="Remove" onClick={() => onRemove(field.uid)} />
               </div>
             </div>
 
@@ -92,10 +68,10 @@ function PropertyList({ fields, errors, blueprintNames, onEdit, onAdd, onMove, o
                 </Button>
               </div>
             )}
-          </li>
+          </div>
         )
       })}
-    </ul>
+    </div>
   )
 }
 

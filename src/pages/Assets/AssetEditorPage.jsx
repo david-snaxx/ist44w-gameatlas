@@ -2,8 +2,6 @@ import { Copy, Download, Eye, Pencil, Plus, RotateCcw, Save, Trash2 } from 'luci
 import { useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import AppShell from '../../components/AppShell/AppShell.jsx'
-import AppSidebar from '../../components/AppSidebar/AppSidebar.jsx'
-import Breadcrumbs from '../../components/Breadcrumbs/Breadcrumbs.jsx'
 import Button from '../../components/Button/Button.jsx'
 import ConfirmDialog from '../../components/ConfirmDialog/ConfirmDialog.jsx'
 import EmptyState from '../../components/EmptyState/EmptyState.jsx'
@@ -45,8 +43,8 @@ import { plural } from '../../utils/plural.js'
 import { useUnsavedChanges } from '../../utils/useUnsavedChanges.js'
 
 const LIST_COLUMNS = [
-  { key: 'name', label: 'Name', sortable: true },
-  { key: 'key', label: 'ID', mono: true },
+  { key: 'name', label: 'Name' },
+  { key: 'key', label: 'ID' },
 ]
 
 /**
@@ -123,11 +121,9 @@ function AssetEditor({ blueprintId, assetKey, imported, origin, originName, foll
       assetsByBlueprint[candidate.id].map((asset) => ({
         value: asset.key,
         label: assetLabel(asset, candidate),
-        hint: asset.key,
       })),
     ]),
   )
-  const blueprintNames = Object.fromEntries(blueprints.map((candidate) => [candidate.id, candidate.name]))
 
   // ---------- Validation ----------
 
@@ -147,7 +143,7 @@ function AssetEditor({ blueprintId, assetKey, imported, origin, originName, foll
   const problems = [
     ...(visibleKeyError ? [{ id: 'asset-meta-id', label: 'ID', message: visibleKeyError }] : []),
     ...Object.entries(visibleValueErrors).map(([path, message]) => ({
-      id: `asset-${path.replaceAll('.', '-')}`,
+      id: `field-${path}`,
       label: labelForPath(fields, path),
       message,
     })),
@@ -173,7 +169,6 @@ function AssetEditor({ blueprintId, assetKey, imported, origin, originName, foll
             ? { to: `/blueprints/${blueprint.id}/assets`, label: `All ${blueprint.name} assets` }
             : { to: '/blueprints', label: 'All blueprints' }
         }
-        crumbs={[{ label: 'Blueprints', to: '/blueprints' }]}
       />
     )
   }
@@ -317,33 +312,28 @@ function AssetEditor({ blueprintId, assetKey, imported, origin, originName, foll
 
   return (
     <AppShell
-      actions={<TopBarActions
+      actions={
+        <TopBarActions
           noun="asset"
           newPath={`/blueprints/${blueprint.id}/assets/new`}
           importFile={(text) => parseAssetFile(text, blueprint)}
-        />}
-      sidebar={<AppSidebar />}
-      breadcrumbs={
-        <Breadcrumbs
-          items={[
-            { label: 'Blueprints', to: '/blueprints' },
-            { label: blueprint.name, to: `/blueprints/${blueprint.id}/assets` },
-            { label: title, ...(baseline ? { to: `/blueprints/${blueprint.id}/assets/${baseline.key}` } : {}) },
-            ...(baseline ? [{ label: 'Edit' }] : []),
-          ]}
         />
       }
+      crumbs={[
+        { label: 'Blueprints', to: '/blueprints' },
+        { label: blueprint.name, to: `/blueprints/${blueprint.id}/assets` },
+        { label: title, ...(baseline ? { to: `/blueprints/${blueprint.id}/assets/${baseline.key}` } : {}) },
+        ...(baseline ? [{ label: 'Edit' }] : []),
+      ]}
       status={status}
     >
       <div className="panes" style={{ '--panes': '260px minmax(0, 1fr) 340px' }}>
         <Section
           title={blueprint.name}
-          bodyClassName="flush"
           actions={
             <Button
               variant="ghost"
               icon={Plus}
-              aria-label="New asset"
               title="New asset"
               onClick={() => navigate(`/blueprints/${blueprint.id}/assets/new`)}
             />
@@ -351,10 +341,9 @@ function AssetEditor({ blueprintId, assetKey, imported, origin, originName, foll
         >
           {listRows.length > 0 ? (
             <Table
-              label={`${blueprint.name} assets`}
               columns={LIST_COLUMNS}
               rows={listRows}
-              selectedKey={baseline?.id}
+              selectedId={baseline?.id}
               onSelect={(id) => {
                 const asset = blueprintAssets.find((candidate) => candidate.id === id)
                 if (asset.key !== assetKey) navigate(`/blueprints/${blueprint.id}/assets/${asset.key}/edit`)
@@ -373,7 +362,6 @@ function AssetEditor({ blueprintId, assetKey, imported, origin, originName, foll
                 <Button
                   variant="ghost"
                   icon={Copy}
-                  aria-label="Duplicate asset"
                   title="Duplicate asset"
                   onClick={() =>
                     navigate(`/blueprints/${blueprint.id}/assets/new`, {
@@ -384,7 +372,6 @@ function AssetEditor({ blueprintId, assetKey, imported, origin, originName, foll
                 <Button
                   variant="ghost"
                   icon={Eye}
-                  aria-label="View asset"
                   title="View asset"
                   onClick={() => navigate(`/blueprints/${blueprint.id}/assets/${baseline.key}`)}
                 />
@@ -419,7 +406,6 @@ function AssetEditor({ blueprintId, assetKey, imported, origin, originName, foll
             )}
 
             <PropertyRow
-              id="asset-meta-id"
               label="ID"
               required
               error={visibleKeyError}
@@ -429,18 +415,15 @@ function AssetEditor({ blueprintId, assetKey, imported, origin, originName, foll
                   : 'How the game and other assets refer to this one.'
               }
             >
-              {(inputProps) => (
-                <TextInput
-                  {...inputProps}
-                  mono
-                  placeholder="sword_of_fire"
-                  value={key}
-                  onChange={(event) => changeKey(event.target.value)}
-                />
-              )}
+              <TextInput
+                id="asset-meta-id"
+                placeholder="sword_of_fire"
+                value={key}
+                onChange={(event) => changeKey(event.target.value)}
+              />
             </PropertyRow>
 
-            <hr className="divider" />
+            <hr />
 
             {fields.length > 0 ? (
               <FormRenderer
@@ -448,9 +431,7 @@ function AssetEditor({ blueprintId, assetKey, imported, origin, originName, foll
                 values={values}
                 onChange={changeValues}
                 errors={visibleValueErrors}
-                idPrefix="asset"
                 referenceOptions={referenceOptions}
-                blueprintNames={blueprintNames}
               />
             ) : (
               <EmptyState message={`The ${blueprint.name} blueprint has no properties yet.`}>
@@ -468,27 +449,27 @@ function AssetEditor({ blueprintId, assetKey, imported, origin, originName, foll
             <Button
               variant="ghost"
               icon={Download}
-              aria-label="Download asset file"
               title="Download asset file"
               onClick={handleDownload}
             />
           }
         >
-          <div className="stack stack-start">
+          <div className="stack">
             <ValidationSummary problems={problems} hiddenCount={problemCount - problems.length} />
             <JsonPreview value={exportShape} />
           </div>
         </Section>
       </div>
 
-      <ConfirmDialog
-        open={confirmDelete}
-        title="Delete asset?"
-        message={deleteMessage}
-        confirmLabel="Delete asset"
-        onCancel={() => setConfirmDelete(false)}
-        onConfirm={handleDelete}
-      />
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Delete asset?"
+          message={deleteMessage}
+          confirmLabel="Delete asset"
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={handleDelete}
+        />
+      )}
 
       <UnsavedChangesDialog blocker={blocker} name={title} />
     </AppShell>

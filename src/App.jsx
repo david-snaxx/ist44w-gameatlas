@@ -11,7 +11,6 @@ import DashboardPage from './pages/Dashboard/DashboardPage.jsx'
 import DialogueListPage from './pages/Dialogues/DialogueListPage.jsx'
 import NotFoundPage from './pages/NotFound/NotFoundPage.jsx'
 import SettingsPage from './pages/Settings/SettingsPage.jsx'
-import StyleShowcase from './pages/StyleShowcase/StyleShowcase.jsx'
 
 // The dialogue editor brings in React Flow, which is large, so it's only downloaded when that page is opened
 const DialogueEditorPage = lazy(() => import('./pages/Dialogues/DialogueEditorPage.jsx'))
@@ -32,7 +31,6 @@ const router = createBrowserRouter([
   { path: '/dialogues/new', element: lazyPage(<DialogueEditorPage />) },
   { path: '/dialogues/:dialogueKey', element: lazyPage(<DialogueEditorPage />) },
   { path: '/settings', element: <SettingsPage /> },
-  { path: '/dev/styles', element: <StyleShowcase /> },
   { path: '*', element: <NotFoundPage /> },
 ])
 

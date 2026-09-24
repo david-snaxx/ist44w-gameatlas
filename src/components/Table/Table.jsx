@@ -1,4 +1,3 @@
-import { ChevronDown, ChevronsUpDown, ChevronUp } from 'lucide-react'
 import { useState } from 'react'
 import { cx } from '../../utils/cx.js'
 
@@ -8,12 +7,12 @@ function compare(a, b) {
 }
 
 /**
- * columns: [{ key, label, sortable?, numeric?, mono?, render?(row) }]
- *   numeric: right-aligned monospace numbers. mono: muted monospace (IDs).
- * rows: array of objects. rowKey: the property that uniquely identifies a row.
- * onSelect(key): makes rows clickable; selectedKey highlights one row.
+ * A table whose rows can be clicked. Clicking a column header sorts by it; clicking again reverses.
+ * columns: [{ key, label, render?(row) }]. render shows something other than row[key]; sorting still uses row[key].
+ * rows: objects that each have a unique `id`.
+ * onSelect(id): called when a row is clicked. selectedId: highlights that row.
  */
-function Table({ columns, rows, rowKey = 'id', selectedKey, onSelect, label }) {
+function Table({ columns, rows, selectedId, onSelect }) {
   const [sort, setSort] = useState({ key: null, direction: 'asc' })
 
   const sortedRows = sort.key
@@ -28,72 +27,28 @@ function Table({ columns, rows, rowKey = 'id', selectedKey, onSelect, label }) {
     )
   }
 
-  function handleRowKeyDown(event, key) {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault()
-      onSelect(key)
-    }
-  }
-
   return (
-    <div className="table-wrap">
-      <table className="table" aria-label={label}>
-        <thead>
-          <tr>
-            {columns.map((column) => {
-              const isSorted = sort.key === column.key
-              const SortIcon = !isSorted ? ChevronsUpDown : sort.direction === 'asc' ? ChevronUp : ChevronDown
-              return (
-                <th
-                  key={column.key}
-                  scope="col"
-                  className={cx(column.numeric && 'table-numeric')}
-                  aria-sort={isSorted ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}
-                >
-                  {column.sortable ? (
-                    <button type="button" className="table-sort" onClick={() => toggleSort(column.key)}>
-                      {column.label}
-                      <SortIcon
-                        size={14}
-                        strokeWidth={1.75}
-                        className={cx(!isSorted && 'table-sort-idle')}
-                        aria-hidden="true"
-                      />
-                    </button>
-                  ) : (
-                    column.label
-                  )}
-                </th>
-              )
-            })}
+    <table className="table">
+      <thead>
+        <tr>
+          {columns.map((column) => (
+            <th key={column.key} onClick={() => toggleSort(column.key)}>
+              {column.label}
+              {sort.key === column.key && (sort.direction === 'asc' ? ' ↑' : ' ↓')}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {sortedRows.map((row) => (
+          <tr key={row.id} className={cx(row.id === selectedId && 'is-selected')} onClick={() => onSelect(row.id)}>
+            {columns.map((column) => (
+              <td key={column.key}>{column.render ? column.render(row) : row[column.key]}</td>
+            ))}
           </tr>
-        </thead>
-        <tbody>
-          {sortedRows.map((row) => {
-            const key = row[rowKey]
-            return (
-              <tr
-                key={key}
-                className={cx(onSelect && 'table-clickable', key === selectedKey && 'is-selected')}
-                tabIndex={onSelect ? 0 : undefined}
-                aria-current={key === selectedKey ? 'true' : undefined}
-                onClick={onSelect ? () => onSelect(key) : undefined}
-                onKeyDown={onSelect ? (event) => handleRowKeyDown(event, key) : undefined}
-              >
-                {columns.map((column) => (
-                  <td
-                    key={column.key}
-                    className={cx(column.numeric && 'table-numeric', column.mono && 'table-mono')}
-                  >
-                    {column.render ? column.render(row) : row[column.key]}
-                  </td>
-                ))}
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
+        ))}
+      </tbody>
+    </table>
   )
 }
 

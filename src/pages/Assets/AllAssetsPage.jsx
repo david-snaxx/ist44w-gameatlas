@@ -15,13 +15,12 @@ import { formatDateTime } from '../../utils/formatDate.js'
 import { plural } from '../../utils/plural.js'
 
 const COLUMNS = [
-  { key: 'name', label: 'Name', sortable: true },
-  { key: 'key', label: 'ID', sortable: true, mono: true },
-  { key: 'blueprintName', label: 'Blueprint', sortable: true },
+  { key: 'name', label: 'Name' },
+  { key: 'key', label: 'ID' },
+  { key: 'blueprintName', label: 'Blueprint' },
   {
     key: 'statusOrder',
     label: 'Status',
-    sortable: true,
     render: (row) =>
       row.problems > 0 ? (
         <Badge tone="error">{plural(row.problems, 'problem')}</Badge>
@@ -31,7 +30,7 @@ const COLUMNS = [
         <Badge tone="success">Ready</Badge>
       ),
   },
-  { key: 'updated', label: 'Updated', sortable: true, mono: true, render: (row) => formatDateTime(row.updated) },
+  { key: 'updated', label: 'Updated', render: (row) => formatDateTime(row.updated) },
 ]
 
 /** Every asset from every blueprint in one table (/assets). */
@@ -102,20 +101,14 @@ function AllAssetsPage() {
       onSearch={setQuery}
       toolbarExtra={
         <Select
-          className="toolbar-filter"
-          aria-label="Filter by blueprint"
           options={[
             { value: '', label: 'All blueprints' },
-            ...blueprints.map((blueprint) => ({ value: blueprint.id, label: blueprint.name, hint: blueprint.id })),
+            ...blueprints.map((blueprint) => ({ value: blueprint.id, label: blueprint.name })),
           ]}
           value={blueprintFilter}
           onChange={setBlueprintFilter}
         />
       }
-      onClearFilters={() => {
-        setQuery('')
-        setBlueprintFilter('')
-      }}
       columns={COLUMNS}
       rows={visibleRows}
       total={rows.length}

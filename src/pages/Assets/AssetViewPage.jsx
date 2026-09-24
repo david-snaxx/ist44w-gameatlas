@@ -1,9 +1,7 @@
 import { Box, Copy, Download, MessagesSquare, Pencil } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router'
 import AppShell from '../../components/AppShell/AppShell.jsx'
-import AppSidebar from '../../components/AppSidebar/AppSidebar.jsx'
 import Badge from '../../components/Badge/Badge.jsx'
-import Breadcrumbs from '../../components/Breadcrumbs/Breadcrumbs.jsx'
 import Button from '../../components/Button/Button.jsx'
 import EmptyState from '../../components/EmptyState/EmptyState.jsx'
 import ValueRenderer from '../../components/form/ValueRenderer.jsx'
@@ -61,7 +59,6 @@ function AssetViewPage() {
             ? { to: `/blueprints/${blueprint.id}/assets`, label: `All ${blueprint.name} assets` }
             : { to: '/blueprints', label: 'All blueprints' }
         }
-        crumbs={[{ label: 'Blueprints', to: '/blueprints' }]}
       />
     )
   }
@@ -88,7 +85,6 @@ function AssetViewPage() {
       .map((other) => ({ other, otherBlueprint: blueprints.find((candidate) => candidate.id === other.schemaId) }))
       .filter(({ other, otherBlueprint }) => otherBlueprint && linksTo(otherBlueprint.fields, other.data, blueprint.id, asset.key))
       .map(({ other, otherBlueprint }) => ({
-        id: other.id,
         icon: Box,
         label: assetLabel(other, otherBlueprint),
         hint: `${otherBlueprint.name} · ${other.key}`,
@@ -97,7 +93,6 @@ function AssetViewPage() {
     ...dialogues
       .filter((dialogue) => dialogueLinksToAsset(dialogue, blueprint.id, asset.key))
       .map((dialogue) => ({
-        id: dialogue.id,
         icon: MessagesSquare,
         label: dialogue.name,
         hint: `Dialogue · ${dialogue.key}`,
@@ -123,21 +118,18 @@ function AssetViewPage() {
 
   return (
     <AppShell
-      actions={<TopBarActions
+      actions={
+        <TopBarActions
           noun="asset"
           newPath={`/blueprints/${blueprint.id}/assets/new`}
           importFile={(text) => parseAssetFile(text, blueprint)}
-        />}
-      sidebar={<AppSidebar />}
-      breadcrumbs={
-        <Breadcrumbs
-          items={[
-            { label: 'Blueprints', to: '/blueprints' },
-            { label: blueprint.name, to: `/blueprints/${blueprint.id}/assets` },
-            { label: name },
-          ]}
         />
       }
+      crumbs={[
+        { label: 'Blueprints', to: '/blueprints' },
+        { label: blueprint.name, to: `/blueprints/${blueprint.id}/assets` },
+        { label: name },
+      ]}
       status={`Updated ${formatDateTime(asset.updatedAt)}`}
     >
       <div className="page">
@@ -145,8 +137,8 @@ function AssetViewPage() {
           <div className={styles.titleBlock}>
             <p className={styles.eyebrow}>{blueprint.name} asset</p>
             <h1>{name}</h1>
-            <div className={styles.badges}>
-              <code className={styles.id}>{asset.key}</code>
+            <div className="row">
+              <code className="muted">{asset.key}</code>
               {isOutdated && <Badge tone="warning">Outdated</Badge>}
               {problems.length > 0 ? (
                 <Badge tone="error">{plural(problems.length, 'problem')}</Badge>
@@ -180,21 +172,18 @@ function AssetViewPage() {
         </header>
 
         {problems.length > 0 && (
-          <Notice tone="warning" role="note">
-              <p>
-                This asset doesn't match its blueprint anymore, so it can't be exported yet.{' '}
-                <Link to={editPath} className={styles.inlineLink}>
-                  Edit it
-                </Link>{' '}
-                to fix:
-              </p>
-              <ul className={styles.problemList}>
-                {problems.map((problem) => (
-                  <li key={problem.path}>
-                    <strong>{problem.label}</strong>: {problem.message}
-                  </li>
-                ))}
-              </ul>
+          <Notice tone="warning">
+            <p>
+              This asset doesn't match its blueprint anymore, so it can't be exported yet.{' '}
+              <Link to={editPath}>Edit it</Link> to fix:
+            </p>
+            <ul className={styles.problemList}>
+              {problems.map((problem) => (
+                <li key={problem.path}>
+                  <strong>{problem.label}</strong>: {problem.message}
+                </li>
+              ))}
+            </ul>
           </Notice>
         )}
 
@@ -209,33 +198,23 @@ function AssetViewPage() {
 
           <div className={styles.side}>
             <Section title="Details">
-              <dl className={styles.details}>
-                <div>
-                  <dt>ID</dt>
-                  <dd className={styles.mono}>{asset.key}</dd>
-                </div>
-                <div>
-                  <dt>Blueprint</dt>
-                  <dd>
-                    <Link to={`/blueprints/${blueprint.id}/assets`} className={styles.inlineLink}>
-                      {blueprint.name}
-                    </Link>
-                    <span className={styles.subtle}>
-                      {' '}
-                      · version {asset.schemaVersion}
-                      {isOutdated ? ` (now ${blueprint.version})` : ''}
-                    </span>
-                  </dd>
-                </div>
-                <div>
-                  <dt>Created</dt>
-                  <dd>{formatDateTime(asset.createdAt)}</dd>
-                </div>
-                <div>
-                  <dt>Updated</dt>
-                  <dd>{formatDateTime(asset.updatedAt)}</dd>
-                </div>
-              </dl>
+              <div className={styles.details}>
+                <span className="muted">ID</span>
+                <span>{asset.key}</span>
+                <span className="muted">Blueprint</span>
+                <span>
+                  <Link to={`/blueprints/${blueprint.id}/assets`}>{blueprint.name}</Link>
+                  <span className="subtle">
+                    {' '}
+                    · version {asset.schemaVersion}
+                    {isOutdated ? ` (now ${blueprint.version})` : ''}
+                  </span>
+                </span>
+                <span className="muted">Created</span>
+                <span>{formatDateTime(asset.createdAt)}</span>
+                <span className="muted">Updated</span>
+                <span>{formatDateTime(asset.updatedAt)}</span>
+              </div>
             </Section>
 
             <Section title="Linked from">
@@ -243,10 +222,8 @@ function AssetViewPage() {
             </Section>
 
             <Section title="Asset file">
-              <div className={styles.fileBody}>
-                <p className={styles.subtle}>What “Export asset” downloads.</p>
-                <JsonPreview value={exportShape} />
-              </div>
+              <p className="subtle">What “Export asset” downloads.</p>
+              <JsonPreview value={exportShape} />
             </Section>
           </div>
         </div>

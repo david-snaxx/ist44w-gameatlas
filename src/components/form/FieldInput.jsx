@@ -1,39 +1,37 @@
+import { VECTOR_AXES } from '../../schema/fieldTypes.js'
+import Checkbox from './Checkbox.jsx'
 import ListInput from './ListInput.jsx'
 import NumberInput from './NumberInput.jsx'
 import Select from './Select.jsx'
 import TextArea from './TextArea.jsx'
 import TextInput from './TextInput.jsx'
-import Toggle from './Toggle.jsx'
 import VectorInput from './VectorInput.jsx'
 
 /**
  * The input for one property, chosen by its type (the field-type registry's UI half).
- * inputProps come from PropertyRow: id, invalid, required and aria-describedby.
+ *
+ * path: where the value lives, e.g. "name", "stats.strength" or "tags.2". The input's id is
+ *   "field-" + path, which is how the validation summary finds it to jump to it.
+ * errors: every error in the form, by path (a list shows its items' errors)
+ * referenceOptions: { [blueprintId]: [{ value, label, hint }] }, the assets a link can point to
  */
-function FieldInput({ field, value, onChange, inputProps, errors, path, referenceOptions = {}, blueprintNames = {} }) {
+function FieldInput({ field, path, value, onChange, errors, referenceOptions = {} }) {
+  const id = `field-${path}`
+
   switch (field.type) {
     case 'string':
-      return <TextInput {...inputProps} value={value ?? ''} onChange={(event) => onChange(event.target.value)} />
+      return <TextInput id={id} value={value ?? ''} onChange={(event) => onChange(event.target.value)} />
     case 'text':
-      return <TextArea {...inputProps} value={value ?? ''} onChange={(event) => onChange(event.target.value)} />
+      return <TextArea id={id} value={value ?? ''} onChange={(event) => onChange(event.target.value)} />
     case 'int':
     case 'float':
-      return (
-        <NumberInput
-          {...inputProps}
-          integer={field.type === 'int'}
-          min={field.min}
-          max={field.max}
-          value={value ?? ''}
-          onChange={(event) => onChange(event.target.value)}
-        />
-      )
+      return <NumberInput id={id} value={value ?? ''} onChange={(event) => onChange(event.target.value)} />
     case 'bool':
-      return <Toggle {...inputProps} checked={Boolean(value)} onChange={onChange} />
+      return <Checkbox checked={Boolean(value)} onChange={onChange} />
     case 'enum':
       return (
         <Select
-          {...inputProps}
+          id={id}
           placeholder="Choose an option…"
           options={(field.options ?? []).map((option) => ({ value: option, label: option }))}
           value={value ?? ''}
@@ -42,28 +40,17 @@ function FieldInput({ field, value, onChange, inputProps, errors, path, referenc
       )
     case 'vector2':
     case 'vector3':
-      return (
-        <VectorInput
-          {...inputProps}
-          // List items are labelled with aria-label instead of a visible label element
-          aria-labelledby={inputProps['aria-label'] ? undefined : `${inputProps.id}-label`}
-          dimensions={field.type === 'vector2' ? 2 : 3}
-          value={value}
-          onChange={onChange}
-        />
-      )
+      return <VectorInput id={id} axes={VECTOR_AXES[field.type]} value={value} onChange={onChange} />
     case 'reference': {
       const options = referenceOptions[field.targetSchema] ?? []
-      const target = blueprintNames[field.targetSchema] ?? 'linked'
       return (
         <Select
-          {...inputProps}
-          searchable
+          id={id}
           options={options}
           value={value ?? ''}
           onChange={onChange}
           disabled={options.length === 0}
-          placeholder={options.length > 0 ? `Choose ${target}…` : `No ${target} assets yet`}
+          placeholder={options.length > 0 ? 'Choose an asset…' : 'No assets to link to yet'}
         />
       )
     }
@@ -71,13 +58,11 @@ function FieldInput({ field, value, onChange, inputProps, errors, path, referenc
       return (
         <ListInput
           field={field}
+          path={path}
           items={value}
           onChange={onChange}
-          inputProps={inputProps}
           errors={errors}
-          path={path}
           referenceOptions={referenceOptions}
-          blueprintNames={blueprintNames}
         />
       )
     default:

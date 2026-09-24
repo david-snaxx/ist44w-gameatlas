@@ -51,7 +51,6 @@ function AssetListPage() {
         title="Blueprint not found"
         message={`There's no blueprint with the ID "${blueprintId}".`}
         back={{ to: '/blueprints', label: 'All blueprints' }}
-        crumbs={[{ label: 'Blueprints', to: '/blueprints' }]}
       />
     )
   }
@@ -96,24 +95,19 @@ function AssetListPage() {
   const visibleRows = search ? rows.filter((row) => row.searchText.includes(search)) : rows
 
   const columns = [
-    { key: 'name', label: 'Name', sortable: true },
-    { key: 'key', label: 'ID', sortable: true, mono: true },
+    { key: 'name', label: 'Name' },
+    { key: 'key', label: 'ID' },
     ...propertyColumns.map((field) => ({
       key: `property:${field.key}`,
       label: field.label,
-      sortable: true,
-      numeric: field.type === 'int' || field.type === 'float',
-      render: (row) => (
-        <span className="truncate">{formatCell(field, row[`property:${field.key}`], assetLabels)}</span>
-      ),
+      render: (row) => formatCell(field, row[`property:${field.key}`], assetLabels),
     })),
     {
       key: 'outdated',
       label: 'Blueprint',
-      sortable: true,
       render: (row) => (row.outdated ? <Badge tone="warning">Outdated</Badge> : <span className="muted">Up to date</span>),
     },
-    { key: 'updated', label: 'Updated', sortable: true, mono: true, render: (row) => formatDateTime(row.updated) },
+    { key: 'updated', label: 'Updated', render: (row) => formatDateTime(row.updated) },
   ]
 
   const referenceKeys = referenceKeysFor(blueprints, assets)
@@ -170,7 +164,6 @@ function AssetListPage() {
       columns={columns}
       rows={visibleRows}
       total={rows.length}
-      tableLabel={`${blueprint.name} assets`}
       onSelect={(id) => {
         const row = rows.find((candidate) => candidate.id === id)
         navigate(assetPath(blueprint.id, row.key))

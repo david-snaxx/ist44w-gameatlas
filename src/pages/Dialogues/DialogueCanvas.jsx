@@ -15,7 +15,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Button from '../../components/Button/Button.jsx'
-import Toggle from '../../components/form/Toggle.jsx'
+import Checkbox from '../../components/form/Checkbox.jsx'
 import { ADDABLE_NODE_TYPES, createNode, edgeId, NODE_TYPES } from '../../data/dialogueGraph.js'
 import { cx } from '../../utils/cx.js'
 import { NODE_ICONS } from './nodeIcons.js'
@@ -82,20 +82,14 @@ function DialogueCanvas({ nodes, edges, setNodes, setEdges }) {
     [nodes, setEdges],
   )
 
-  // Close the "Add next step" menu on Escape or a click outside it
+  // Close the "Add next step" menu on a click outside it
   useEffect(() => {
     if (!pendingConnection) return
     function close(event) {
-      if (event.type === 'keydown' ? event.key === 'Escape' : !menuRef.current?.contains(event.target)) {
-        setPendingConnection(null)
-      }
+      if (!menuRef.current.contains(event.target)) setPendingConnection(null)
     }
     document.addEventListener('pointerdown', close)
-    document.addEventListener('keydown', close)
-    return () => {
-      document.removeEventListener('pointerdown', close)
-      document.removeEventListener('keydown', close)
-    }
+    return () => document.removeEventListener('pointerdown', close)
   }, [pendingConnection])
 
   /** Adds a node at a screen position (and optionally connects an output to it), then selects it. */
@@ -133,7 +127,7 @@ function DialogueCanvas({ nodes, edges, setNodes, setEdges }) {
       >
         <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
         <Controls showInteractive={false} />
-        <MiniMap pannable zoomable ariaLabel="Dialogue overview" />
+        <MiniMap pannable zoomable />
 
         <FlowPanel position="top-left" className={cx('glass', styles.toolbar)}>
           <div className={styles.toolbarRow}>
@@ -152,10 +146,8 @@ function DialogueCanvas({ nodes, edges, setNodes, setEdges }) {
           </div>
           <div className={cx(styles.toolbarRow, styles.toolbarFooter)}>
             <span className={styles.hint}>Drag from a dot to connect. Drop on empty space to add the next step.</span>
-            <label htmlFor="animate-dialogue-flow" className={styles.toggleLabel}>
-              Animate flow
-            </label>
-            <Toggle id="animate-dialogue-flow" checked={animated} onChange={setAnimated} />
+            <span className="small muted">Animate flow</span>
+            <Checkbox checked={animated} onChange={setAnimated} />
           </div>
         </FlowPanel>
       </ReactFlow>
@@ -164,8 +156,6 @@ function DialogueCanvas({ nodes, edges, setNodes, setEdges }) {
         createPortal(
           <div
             ref={menuRef}
-            role="menu"
-            aria-label="Add the next step"
             className={cx('glass', styles.menu)}
             style={{
               left: Math.min(pendingConnection.x, window.innerWidth - MENU_WIDTH - 8),
@@ -179,8 +169,6 @@ function DialogueCanvas({ nodes, edges, setNodes, setEdges }) {
                 <button
                   key={type}
                   type="button"
-                  role="menuitem"
-                  autoFocus={type === 'line'}
                   className={styles.menuItem}
                   onClick={() => {
                     const { source, sourceHandle, x, y } = pendingConnection
@@ -188,9 +176,9 @@ function DialogueCanvas({ nodes, edges, setNodes, setEdges }) {
                     setPendingConnection(null)
                   }}
                 >
-                  <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
-                  <span className={styles.menuText}>
-                    <span className={styles.menuLabel}>{NODE_TYPES[type].label}</span>
+                  <Icon size={16} />
+                  <span>
+                    {NODE_TYPES[type].label}
                     <span className={styles.menuDescription}>{NODE_TYPES[type].description}</span>
                   </span>
                 </button>
