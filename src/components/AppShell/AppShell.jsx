@@ -22,15 +22,35 @@ function AppShell({ actions, crumbs, status, children }) {
       <footer className="shell-status">
         <span>
           {crumbs.map((crumb, index) => (
-            <span key={index}>
-              {index > 0 && ' › '}
-              {crumb.to ? <Link to={crumb.to}>{crumb.label}</Link> : crumb.label}
-            </span>
+            <Crumb key={index} crumb={crumb} isFirst={index === 0} />
           ))}
         </span>
         {status && <span className="push-right">{status}</span>}
       </footer>
     </div>
+  )
+}
+
+/** One step of the breadcrumb trail: a link, or plain text for the current page. */
+function Crumb({ crumb, isFirst }) {
+  let separator = ' › '
+  if (isFirst) {
+    separator = ''
+  }
+
+  if (crumb.to) {
+    return (
+      <span>
+        {separator}
+        <Link to={crumb.to}>{crumb.label}</Link>
+      </span>
+    )
+  }
+  return (
+    <span>
+      {separator}
+      {crumb.label}
+    </span>
   )
 }
 

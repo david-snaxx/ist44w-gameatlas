@@ -15,14 +15,20 @@ let blueprints = load()
 function load() {
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY)
-    if (stored === null) return STARTER_BLUEPRINTS
+    if (stored === null) {
+      return STARTER_BLUEPRINTS
+    }
     const parsed = JSON.parse(stored)
-    return Array.isArray(parsed) ? parsed : STARTER_BLUEPRINTS
+    if (!Array.isArray(parsed)) {
+      return STARTER_BLUEPRINTS
+    }
+    return parsed
   } catch {
     return STARTER_BLUEPRINTS
   }
 }
 
+// Replaces the list, saves it, and tells every subscriber (so the pages re-render)
 function commit(next) {
   blueprints = next
   try {
@@ -30,12 +36,17 @@ function commit(next) {
   } catch {
     // Storage can be unavailable (e.g. a private window). Keep working in memory.
   }
-  listeners.forEach((listener) => listener())
+  for (const listener of listeners) {
+    listener()
+  }
 }
 
 export function subscribe(listener) {
   listeners.add(listener)
-  return () => listeners.delete(listener)
+  // useSyncExternalStore calls the returned function to stop listening
+  return function unsubscribe() {
+    listeners.delete(listener)
+  }
 }
 
 // Returns the same array until something changes, which is what useSyncExternalStore needs
@@ -46,11 +57,15 @@ export function getBlueprints() {
 /** Adds or replaces a blueprint. Pass previousId when the blueprint's ID was changed. */
 export function saveBlueprint(definition, previousId = definition.id) {
   const index = blueprints.findIndex((blueprint) => blueprint.id === previousId)
-  commit(
-    index === -1
-      ? [...blueprints, definition]
-      : blueprints.map((blueprint, i) => (i === index ? definition : blueprint)),
-  )
+
+  if (index === -1) {
+    commit([...blueprints, definition])
+    return
+  }
+
+  const next = [...blueprints]
+  next[index] = definition
+  commit(next)
 }
 
 export function deleteBlueprint(id) {

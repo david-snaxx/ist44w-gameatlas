@@ -11,27 +11,39 @@ import { useBlocker } from 'react-router'
  * after deleting — so the guard doesn't ask about changes that no longer matter.
  */
 export function useUnsavedChanges(isDirty) {
+  // A ref is a value that survives re-renders without causing one when it changes
   const allowedRef = useRef(false)
 
-  const blocker = useBlocker(
-    ({ currentLocation, nextLocation }) =>
-      isDirty && !allowedRef.current && currentLocation.key !== nextLocation.key,
-  )
+  // react-router calls this before every in-app navigation; returning true stops it
+  function shouldBlock({ currentLocation, nextLocation }) {
+    if (!isDirty || allowedRef.current) {
+      return false
+    }
+    return currentLocation.key !== nextLocation.key
+  }
+  const blocker = useBlocker(shouldBlock)
 
+  // While there are unsaved changes, ask the browser to warn before the tab closes or reloads
   useEffect(() => {
-    if (!isDirty) return
+    if (!isDirty) {
+      return
+    }
+
     function warnBeforeUnload(event) {
       event.preventDefault()
       event.returnValue = ''
     }
     window.addEventListener('beforeunload', warnBeforeUnload)
-    return () => window.removeEventListener('beforeunload', warnBeforeUnload)
+
+    // React runs the returned function when isDirty changes or the editor closes
+    return function stopWarning() {
+      window.removeEventListener('beforeunload', warnBeforeUnload)
+    }
   }, [isDirty])
 
-  return {
-    blocker,
-    allowLeaving: () => {
-      allowedRef.current = true
-    },
+  function allowLeaving() {
+    allowedRef.current = true
   }
+
+  return { blocker, allowLeaving }
 }

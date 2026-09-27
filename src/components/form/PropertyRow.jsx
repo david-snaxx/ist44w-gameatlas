@@ -9,15 +9,24 @@
  * The error, if there is one, replaces the help text.
  */
 function PropertyRow({ label, required, help, error, children }) {
+  let message = null
+  if (error) {
+    message = <p className="field-error">{error}</p>
+  } else if (help) {
+    message = <p className="prop-help">{help}</p>
+  }
+
+  let labelText = label
+  if (required) {
+    labelText = `${label} *`
+  }
+
   return (
     <div className="prop">
-      <span className="prop-label">
-        {label}
-        {required && ' *'}
-      </span>
+      <span className="prop-label">{labelText}</span>
       <div className="prop-control">
         {children}
-        {error ? <p className="field-error">{error}</p> : help && <p className="prop-help">{help}</p>}
+        {message}
       </div>
     </div>
   )

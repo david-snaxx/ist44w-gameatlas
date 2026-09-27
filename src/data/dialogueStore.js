@@ -13,14 +13,20 @@ let dialogues = load()
 function load() {
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY)
-    if (stored === null) return STARTER_DIALOGUES
+    if (stored === null) {
+      return STARTER_DIALOGUES
+    }
     const parsed = JSON.parse(stored)
-    return Array.isArray(parsed) ? parsed : STARTER_DIALOGUES
+    if (!Array.isArray(parsed)) {
+      return STARTER_DIALOGUES
+    }
+    return parsed
   } catch {
     return STARTER_DIALOGUES
   }
 }
 
+// Replaces the list, saves it, and tells every subscriber (so the pages re-render)
 function commit(next) {
   dialogues = next
   try {
@@ -28,12 +34,17 @@ function commit(next) {
   } catch {
     // Storage can be unavailable (e.g. a private window). Keep working in memory.
   }
-  listeners.forEach((listener) => listener())
+  for (const listener of listeners) {
+    listener()
+  }
 }
 
 export function subscribe(listener) {
   listeners.add(listener)
-  return () => listeners.delete(listener)
+  // useSyncExternalStore calls the returned function to stop listening
+  return function unsubscribe() {
+    listeners.delete(listener)
+  }
 }
 
 export function getDialogues() {
@@ -42,12 +53,27 @@ export function getDialogues() {
 
 /** Adds new dialogues and replaces existing ones (matched by `id`) in one change. */
 export function saveDialogues(changedDialogues) {
-  const changedById = new Map(changedDialogues.map((dialogue) => [dialogue.id, dialogue]))
-  const existingIds = new Set(dialogues.map((dialogue) => dialogue.id))
-  commit([
-    ...dialogues.map((dialogue) => changedById.get(dialogue.id) ?? dialogue),
-    ...changedDialogues.filter((dialogue) => !existingIds.has(dialogue.id)),
-  ])
+  const next = []
+
+  // Existing dialogues keep their place; a changed one is swapped in
+  for (const dialogue of dialogues) {
+    const changed = changedDialogues.find((candidate) => candidate.id === dialogue.id)
+    if (changed) {
+      next.push(changed)
+    } else {
+      next.push(dialogue)
+    }
+  }
+
+  // Dialogues that didn't exist yet go at the end
+  for (const dialogue of changedDialogues) {
+    const alreadyExists = dialogues.some((existing) => existing.id === dialogue.id)
+    if (!alreadyExists) {
+      next.push(dialogue)
+    }
+  }
+
+  commit(next)
 }
 
 export function deleteDialogue(id) {
@@ -61,11 +87,16 @@ export function replaceDialogues(nextDialogues) {
 
 /** Keeps dialogues pointing at a blueprint whose ID was changed. */
 export function retargetDialogueBlueprint(fromId, toId) {
-  commit(
-    dialogues.map((dialogue) => ({
-      ...dialogue,
-      speakerBlueprint: dialogue.speakerBlueprint === fromId ? toId : dialogue.speakerBlueprint,
-      itemBlueprint: dialogue.itemBlueprint === fromId ? toId : dialogue.itemBlueprint,
-    })),
-  )
+  const next = []
+  for (const dialogue of dialogues) {
+    const updated = { ...dialogue }
+    if (updated.speakerBlueprint === fromId) {
+      updated.speakerBlueprint = toId
+    }
+    if (updated.itemBlueprint === fromId) {
+      updated.itemBlueprint = toId
+    }
+    next.push(updated)
+  }
+  commit(next)
 }

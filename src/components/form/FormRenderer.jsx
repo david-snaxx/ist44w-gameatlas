@@ -10,59 +10,96 @@ import PropertyRow from './PropertyRow.jsx'
  * onChange(nextValues, changedPath): called with the whole updated values object
  * errors: { [path]: message }, where a path looks like "name", "stats.strength" or "tags.2".
  *   Each input's id is "field-" + its path.
- * referenceOptions: { [blueprintId]: [{ value, label, hint }] }, the assets a link can point to
+ * referenceOptions: { [blueprintId]: [{ value, label }] }, the assets a link can point to
  * pathPrefix: only used when a group renders its own properties
  */
 function FormRenderer({ fields, values, onChange, errors, referenceOptions, pathPrefix = '' }) {
   return (
     <div className="form">
-      {fields.map((field) => {
-        const path = pathPrefix ? `${pathPrefix}.${field.key}` : field.key
-        const value = values[field.key]
-        const setValue = (next, changedPath = path) => onChange({ ...values, [field.key]: next }, changedPath)
+      {fields.map((field) => (
         // Drafts have a uid; saved definitions only have unique keys
-        const reactKey = field.uid ?? field.key
+        <FormField
+          key={field.uid ?? field.key}
+          field={field}
+          values={values}
+          onChange={onChange}
+          errors={errors}
+          referenceOptions={referenceOptions}
+          pathPrefix={pathPrefix}
+        />
+      ))}
+    </div>
+  )
+}
 
-        if (field.type === 'object') {
-          return (
-            <div key={reactKey} className="form-group">
-              <p className="form-group-label">{field.label || 'Untitled group'}</p>
-              {field.help && <p className="prop-help">{field.help}</p>}
-              {field.fields?.length ? (
-                <FormRenderer
-                  fields={field.fields}
-                  values={value ?? {}}
-                  onChange={setValue}
-                  errors={errors}
-                  referenceOptions={referenceOptions}
-                  pathPrefix={path}
-                />
-              ) : (
-                <p className="prop-help">This group has no properties yet.</p>
-              )}
-            </div>
-          )
-        }
+/** One property of the form: a labelled input, or for a group, its own indented form. */
+function FormField({ field, values, onChange, errors, referenceOptions, pathPrefix }) {
+  let path = field.key
+  if (pathPrefix) {
+    path = `${pathPrefix}.${field.key}`
+  }
+  const value = values[field.key]
 
-        return (
-          <PropertyRow
-            key={reactKey}
-            label={field.label || 'Untitled property'}
-            required={field.required}
-            help={field.help}
-            error={errors[path]}
-          >
-            <FieldInput
-              field={field}
-              path={path}
-              value={value ?? defaultValue(field)}
-              onChange={setValue}
-              errors={errors}
-              referenceOptions={referenceOptions}
-            />
-          </PropertyRow>
-        )
-      })}
+  // Reports a new value for this property as a whole new values object.
+  // changedPath is the path of what the user actually edited (deeper than `path` inside a group).
+  function setValue(nextValue, changedPath = path) {
+    const nextValues = { ...values, [field.key]: nextValue }
+    onChange(nextValues, changedPath)
+  }
+
+  if (field.type === 'object') {
+    return (
+      <GroupField
+        field={field}
+        path={path}
+        value={value}
+        onChange={setValue}
+        errors={errors}
+        referenceOptions={referenceOptions}
+      />
+    )
+  }
+
+  return (
+    <PropertyRow
+      label={field.label || 'Untitled property'}
+      required={field.required}
+      help={field.help}
+      error={errors[path]}
+    >
+      <FieldInput
+        field={field}
+        path={path}
+        value={value ?? defaultValue(field)}
+        onChange={setValue}
+        errors={errors}
+        referenceOptions={referenceOptions}
+      />
+    </PropertyRow>
+  )
+}
+
+/** A group (object property): its label and help, then its own properties indented behind a line. */
+function GroupField({ field, path, value, onChange, errors, referenceOptions }) {
+  let content = <p className="prop-help">This group has no properties yet.</p>
+  if (field.fields?.length) {
+    content = (
+      <FormRenderer
+        fields={field.fields}
+        values={value ?? {}}
+        onChange={onChange}
+        errors={errors}
+        referenceOptions={referenceOptions}
+        pathPrefix={path}
+      />
+    )
+  }
+
+  return (
+    <div className="form-group">
+      <p className="form-group-label">{field.label || 'Untitled group'}</p>
+      {field.help && <p className="prop-help">{field.help}</p>}
+      {content}
     </div>
   )
 }

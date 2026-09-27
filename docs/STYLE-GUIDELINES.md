@@ -491,8 +491,11 @@ Don't add these back unless the project's scope changes; record that in PLAN.md'
   src/styles/base.css       # the reset, utilities, and every shared component's styling, as global classes
   src/components/<Name>/<Name>.jsx        # no stylesheet of its own
   src/pages/<Area>/<Page>.module.css      # page layout only, scoped
-  src/utils/cx.js           # joins class names: cx('btn', isOn && 'is-active')
   ```
+
+Class names are joined with plain strings and `if`, not a helper:
+`let className = 'seg-btn'; if (isActive) className = 'seg-btn is-active'`. With a CSS Module, put the
+parts in an array and `join(' ')` it (see `NodeShell` in `DialogueNodes.jsx`).
 
 **Shared components have no CSS Modules** (decision of 2026-09-17). Every component in `src/components/`
 is styled by global classes in `base.css`. Pages keep their own `.module.css` for layout, which loads after

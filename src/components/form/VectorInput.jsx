@@ -4,24 +4,43 @@
  * id goes on the first box.
  */
 function VectorInput({ id, axes, value, onChange }) {
+  function changeAxis(axis, text) {
+    // A copy of the whole vector with this one axis replaced
+    const nextValue = { ...value }
+    if (text === '') {
+      nextValue[axis] = ''
+    } else {
+      nextValue[axis] = Number(text)
+    }
+    onChange(nextValue)
+  }
+
+  const axisInputs = []
+  for (let index = 0; index < axes.length; index++) {
+    const axis = axes[index]
+    // Only the first box gets the id (it's what the problem list jumps to)
+    let axisId = undefined
+    if (index === 0) {
+      axisId = id
+    }
+    const axisValue = value?.[axis] ?? ''
+    axisInputs.push(<AxisInput key={axis} id={axisId} axis={axis} value={axisValue} onChange={changeAxis} />)
+  }
+
+  return <div className="row">{axisInputs}</div>
+}
+
+/** One axis: its letter and a number box. */
+function AxisInput({ id, axis, value, onChange }) {
+  function handleChange(event) {
+    onChange(axis, event.target.value)
+  }
+
   return (
-    <div className="row">
-      {axes.map((axis, index) => (
-        <span key={axis} className="row">
-          {axis.toUpperCase()}
-          <input
-            id={index === 0 ? id : undefined}
-            type="number"
-            step="any"
-            className="input input-number"
-            value={value?.[axis] ?? ''}
-            onChange={(event) =>
-              onChange({ ...value, [axis]: event.target.value === '' ? '' : Number(event.target.value) })
-            }
-          />
-        </span>
-      ))}
-    </div>
+    <span className="row">
+      {axis.toUpperCase()}
+      <input id={id} type="number" step="any" className="input input-number" value={value} onChange={handleChange} />
+    </span>
   )
 }
 

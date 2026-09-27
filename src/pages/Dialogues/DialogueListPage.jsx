@@ -9,6 +9,7 @@ import TopBarActions from '../../components/TopBarActions/TopBarActions.jsx'
 import { useToast } from '../../components/Toast/useToast.js'
 import {
   countNodes,
+  dialogueCheckContext,
   parseDialogueFile,
   toDialogueExport,
   validateDialogueGraph,
@@ -25,16 +26,7 @@ const COLUMNS = [
   { key: 'key', label: 'ID' },
   { key: 'lines', label: 'Lines' },
   { key: 'choices', label: 'Choices' },
-  {
-    key: 'problems',
-    label: 'Status',
-    render: (row) =>
-      row.problems > 0 ? (
-        <Badge tone="warning">{plural(row.problems, 'problem')}</Badge>
-      ) : (
-        <Badge tone="success">Ready</Badge>
-      ),
-  },
+  { key: 'problems', label: 'Status', render: (row) => <StatusBadge problems={row.problems} /> },
   { key: 'updated', label: 'Updated', render: (row) => formatDateTime(row.updated) },
 ]
 
@@ -47,34 +39,47 @@ function DialogueListPage() {
   const toast = useToast()
   const [query, setQuery] = useState('')
 
-  const context = {
-    blueprintIds: blueprints.map((blueprint) => blueprint.id),
-    assetKeys: Object.fromEntries(
-      blueprints.map((blueprint) => [
-        blueprint.id,
-        assets.filter((asset) => asset.schemaId === blueprint.id).map((asset) => asset.key),
-      ]),
-    ),
+  const context = dialogueCheckContext(blueprints, assets)
+
+  const rows = []
+  for (const dialogue of dialogues) {
+    rows.push({
+      id: dialogue.id,
+      key: dialogue.key,
+      name: dialogue.name,
+      lines: countNodes(dialogue.nodes, 'line'),
+      choices: countNodes(dialogue.nodes, 'choice'),
+      problems: validateDialogueGraph(dialogue, context).length,
+      updated: dialogue.updatedAt,
+    })
   }
 
-  const rows = dialogues.map((dialogue) => ({
-    id: dialogue.id,
-    key: dialogue.key,
-    name: dialogue.name,
-    lines: countNodes(dialogue.nodes, 'line'),
-    choices: countNodes(dialogue.nodes, 'choice'),
-    problems: validateDialogueGraph(dialogue, context).length,
-    updated: dialogue.updatedAt,
-  }))
-
+  // The rows whose name or ID contains the search text
   const search = query.trim().toLowerCase()
-  const visibleRows = search
-    ? rows.filter((row) => `${row.name} ${row.key}`.toLowerCase().includes(search))
-    : rows
+  let visibleRows = rows
+  if (search) {
+    visibleRows = rows.filter((row) => `${row.name} ${row.key}`.toLowerCase().includes(search))
+  }
 
-  const newDialogue = () => navigate('/dialogues/new')
+  function handleDownload() {
+    downloadCollection({
+      toast: toast,
+      noun: 'dialogue',
+      filename: 'dialogues.json',
+      items: dialogues,
+      problems: (dialogue) => validateDialogueGraph(dialogue, context).length,
+      toExport: toDialogueExport,
+    })
+  }
+
+  function openDialogue(id) {
+    const dialogue = dialogues.find((candidate) => candidate.id === id)
+    navigate(`/dialogues/${dialogue.key}`)
+  }
+
+  // The same button appears in the header and in the empty state
   const newButton = (
-    <Button variant="primary" icon={Plus} onClick={newDialogue}>
+    <Button variant="primary" icon={Plus} onClick={() => navigate('/dialogues/new')}>
       New dialogue
     </Button>
   )
@@ -85,25 +90,10 @@ function DialogueListPage() {
       intro="Conversations between characters and the player, built as a tree of lines, player choices and actions."
       noun="dialogue"
       crumbs={[{ label: 'Dialogues' }]}
-      topBarActions={
-        <TopBarActions noun="dialogue" newPath="/dialogues/new" importFile={parseDialogueFile} />
-      }
+      topBarActions={<TopBarActions noun="dialogue" newPath="/dialogues/new" importFile={parseDialogueFile} />}
       actions={
         <>
-          <Button
-            icon={Download}
-            disabled={dialogues.length === 0}
-            onClick={() =>
-              downloadCollection({
-                toast,
-                noun: 'dialogue',
-                filename: 'dialogues.json',
-                items: dialogues,
-                problems: (dialogue) => validateDialogueGraph(dialogue, context).length,
-                toExport: toDialogueExport,
-              })
-            }
-          >
+          <Button icon={Download} disabled={dialogues.length === 0} onClick={handleDownload}>
             Download all
           </Button>
           {newButton}
@@ -114,10 +104,18 @@ function DialogueListPage() {
       columns={COLUMNS}
       rows={visibleRows}
       total={rows.length}
-      onSelect={(id) => navigate(`/dialogues/${dialogues.find((dialogue) => dialogue.id === id).key}`)}
+      onSelect={openDialogue}
       empty={<EmptyState message="No dialogues yet.">{newButton}</EmptyState>}
     />
   )
+}
+
+/** The Status cell: how many problems the dialogue has, or that it's ready. */
+function StatusBadge({ problems }) {
+  if (problems > 0) {
+    return <Badge tone="warning">{plural(problems, 'problem')}</Badge>
+  }
+  return <Badge tone="success">Ready</Badge>
 }
 
 export default DialogueListPage

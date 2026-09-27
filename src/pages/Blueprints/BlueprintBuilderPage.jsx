@@ -40,7 +40,13 @@ import { retargetDialogueBlueprint } from '../../data/dialogueStore.js'
 import { useAssets } from '../../data/useAssets.js'
 import { deleteBlueprint, saveBlueprint } from '../../schema/blueprintStore.js'
 import { useBlueprints } from '../../schema/useBlueprints.js'
-import { countProblems, validateBlueprint, validateFieldDefinition, validateValues } from '../../schema/validation.js'
+import {
+  countProblems,
+  onlyTouchedErrors,
+  validateBlueprint,
+  validateFieldDefinition,
+  validateValues,
+} from '../../schema/validation.js'
 import { downloadJson } from '../../utils/downloadJson.js'
 import { plural } from '../../utils/plural.js'
 import { useUnsavedChanges } from '../../utils/useUnsavedChanges.js'
@@ -60,13 +66,22 @@ const PREVIEW_TABS = [
 function BlueprintBuilderPage() {
   const { blueprintId } = useParams()
   const location = useLocation()
+
+  // location.state is what the page that sent us here passed along (an import or a duplicate), if anything
+  const state = location.state ?? {}
+
+  let editorKey = `new-${location.key}`
+  if (blueprintId) {
+    editorKey = blueprintId
+  }
+
   return (
     <BlueprintBuilder
-      key={blueprintId ?? `new-${location.key}`}
+      key={editorKey}
       blueprintId={blueprintId}
-      importedDefinition={location.state?.imported}
-      origin={location.state?.origin}
-      originName={location.state?.originName}
+      importedDefinition={state.imported}
+      origin={state.origin}
+      originName={state.originName}
     />
   )
 }
@@ -84,12 +99,11 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
   const navigate = useNavigate()
   const toast = useToast()
 
-  // The last saved definition (null for a blueprint that hasn't been saved yet)
-  const [baseline, setBaseline] = useState(() =>
-    blueprintId ? (blueprints.find((blueprint) => blueprint.id === blueprintId) ?? null) : null,
-  )
+  // The last saved definition (null for a blueprint that hasn't been saved yet).
+  // `useState(() => …)` only runs the function the first time.
+  const [baseline, setBaseline] = useState(() => findSavedBlueprint(blueprints, blueprintId))
   // The blueprint being edited (see schema/blueprintDraft.js for draft vs. definition)
-  const [draft, setDraft] = useState(() => toDraft(baseline ?? importedDefinition ?? EMPTY_BLUEPRINT))
+  const [draft, setDraft] = useState(() => startingDraft(baseline, importedDefinition))
   const [idTouched, setIdTouched] = useState(Boolean(baseline) || importedIdIsFixed)
   const [metaTouched, setMetaTouched] = useState({})
   const [showAllErrors, setShowAllErrors] = useState(Boolean(importedDefinition) && !isDuplicate)
@@ -99,30 +113,43 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
   const [previewTab, setPreviewTab] = useState('form')
   const [sampleValues, setSampleValues] = useState({})
   const [touchedPaths, setTouchedPaths] = useState([])
-  // Set just before navigating away on purpose (after saving or deleting), so the unsaved-changes guard lets it through
 
   // ---------- Derived data (recalculated on every render) ----------
 
   const definition = toDefinition(draft)
-  const definitionJson = JSON.stringify(definition)
-  const baselineJson = baseline ? JSON.stringify(toDefinition(toDraft(baseline))) : null
-  const isDirty = baseline ? definitionJson !== baselineJson : draft.name !== '' || draft.fields.length > 0
+  let isDirty = draft.name !== '' || draft.fields.length > 0
+  if (baseline) {
+    // Both sides go through the same conversion, so only real changes count
+    const savedJson = JSON.stringify(toDefinition(toDraft(baseline)))
+    isDirty = JSON.stringify(definition) !== savedJson
+  }
 
-  const otherBlueprints = blueprints.filter((blueprint) => blueprint.id !== baseline?.id)
-  const otherIds = otherBlueprints.map((blueprint) => blueprint.id)
-  const linkTargets = [...otherBlueprints, { id: draft.id, name: draft.name }].filter((blueprint) => blueprint.id)
-  const blueprintOptions = linkTargets.map((blueprint) => ({
-    value: blueprint.id,
-    label: blueprint.name || blueprint.id,
-  }))
-  const blueprintNames = Object.fromEntries(blueprintOptions.map((option) => [option.value, option.label]))
+  // Blueprints a link property can point to: the other blueprints, and this one (by the ID being typed)
+  const linkTargets = findLinkTargets(blueprints, baseline, draft)
+  const linkTargetIds = []
+  const blueprintOptions = []
+  const blueprintNames = {}
+  for (const target of linkTargets) {
+    const label = target.name || target.id
+    linkTargetIds.push(target.id)
+    blueprintOptions.push({ value: target.id, label: label })
+    blueprintNames[target.id] = label
+  }
 
-  const errors = validateBlueprint(draft, { otherIds, blueprintIds: linkTargets.map((blueprint) => blueprint.id) })
+  const otherIds = []
+  for (const blueprint of blueprints) {
+    if (blueprint.id !== baseline?.id) {
+      otherIds.push(blueprint.id)
+    }
+  }
+
+  const errors = validateBlueprint(draft, { otherIds: otherIds, blueprintIds: linkTargetIds })
   const problemCount = countProblems(errors)
 
   // ---------- Leaving with unsaved changes ----------
 
-  // In-app navigation (sidebar, breadcrumbs, back button) asks for confirmation
+  // In-app navigation (sidebar, breadcrumbs, back button) asks for confirmation.
+  // (A hook, so it has to run on every render, before the "not found" return below.)
   const { blocker, allowLeaving } = useUnsavedChanges(isDirty)
 
   if (blueprintId && !baseline) {
@@ -137,31 +164,63 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
 
   // ---------- Name, ID and description ----------
 
-  const metaError = (name) => (showAllErrors || metaTouched[name] ? errors.blueprint?.[name] : undefined)
+  // The error for "name" or "id", once it's been touched or the user tried to save
+  function metaError(name) {
+    if (showAllErrors || metaTouched[name]) {
+      return errors.blueprint?.[name]
+    }
+    return undefined
+  }
 
   function changeName(name) {
+    const nextDraft = { ...draft, name: name }
+    const nextTouched = { ...metaTouched, name: true }
     // The ID follows the name until the user edits the ID themselves
-    setDraft((current) => ({ ...current, name, ...(idTouched ? {} : { id: toSnakeCase(name) }) }))
-    setMetaTouched((current) => ({ ...current, name: true, ...(idTouched ? {} : { id: true }) }))
+    if (!idTouched) {
+      nextDraft.id = toSnakeCase(name)
+      nextTouched.id = true
+    }
+    setDraft(nextDraft)
+    setMetaTouched(nextTouched)
   }
 
   function changeId(id) {
-    setDraft((current) => ({ ...current, id }))
+    setDraft({ ...draft, id: id })
     setIdTouched(true)
-    setMetaTouched((current) => ({ ...current, id: true }))
+    setMetaTouched({ ...metaTouched, id: true })
+  }
+
+  function changeDescription(description) {
+    setDraft({ ...draft, description: description })
   }
 
   // ---------- Properties ----------
 
-  const updateFields = (transform) => setDraft((current) => ({ ...current, fields: transform(current.fields) }))
+  function setFields(fields) {
+    setDraft({ ...draft, fields: fields })
+  }
 
-  function openAddProperty(parentUid = null) {
-    setEditor({ mode: 'add', parentUid, field: createField('string'), keyTouched: false, touched: {}, showErrors: false })
+  // Opens the side panel for a new property, at the top level (parentUid null) or inside a group
+  function openAddProperty(parentUid) {
+    setEditor({
+      mode: 'add',
+      parentUid: parentUid,
+      field: createField('string'),
+      keyTouched: false,
+      touched: {},
+      showErrors: false,
+    })
+  }
+
+  function addTopLevelProperty() {
+    openAddProperty(null)
   }
 
   function openEditProperty(uid) {
     const found = findField(draft.fields, uid)
-    if (!found) return
+    if (!found) {
+      return
+    }
     setEditor({
       mode: 'edit',
       parentUid: null,
@@ -172,52 +231,54 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
     })
   }
 
+  function moveProperty(uid, direction) {
+    setFields(moveField(draft.fields, uid, direction))
+  }
+
+  function duplicateProperty(uid) {
+    setFields(duplicateField(draft.fields, uid))
+  }
+
   function removeProperty(uid) {
     const previousFields = draft.fields
-    const { field } = findField(previousFields, uid)
-    updateFields((fields) => removeField(fields, uid))
+    const removed = findField(previousFields, uid).field
+    setFields(removeField(previousFields, uid))
+
+    // Undo can be clicked seconds later, after other edits. The "current =>" form of setDraft
+    // gets the newest draft, so only the property list is put back.
+    function undo() {
+      setDraft((current) => ({ ...current, fields: previousFields }))
+    }
+
     toast.show({
       status: 'success',
-      message: `Property "${field.label || 'Untitled property'}" removed`,
-      action: { label: 'Undo', onClick: () => updateFields(() => previousFields) },
+      message: `Property "${removed.label || 'Untitled property'}" removed`,
+      action: { label: 'Undo', onClick: undo },
     })
   }
 
-  function getEditorErrors() {
-    if (!editor) return {}
-    const siblings =
-      editor.mode === 'add'
-        ? editor.parentUid
-          ? (findField(draft.fields, editor.parentUid)?.field.fields ?? [])
-          : draft.fields
-        : (findField(draft.fields, editor.field.uid)?.siblings ?? [])
-    return validateFieldDefinition(editor.field, {
-      siblings,
-      blueprintIds: linkTargets.map((blueprint) => blueprint.id),
+  let editorErrors = {}
+  if (editor) {
+    editorErrors = validateFieldDefinition(editor.field, {
+      siblings: editorSiblings(editor, draft.fields),
+      blueprintIds: linkTargetIds,
       // A new group gets its properties after it's added, so don't require them yet
       checkChildren: editor.mode === 'edit',
     })
   }
-  const editorErrors = getEditorErrors()
 
   function applyEditor() {
     if (Object.keys(editorErrors).length > 0) {
-      setEditor((current) => ({ ...current, showErrors: true }))
+      setEditor({ ...editor, showErrors: true })
       return
     }
-    if (editor.mode === 'add') updateFields((fields) => addField(fields, editor.parentUid, editor.field))
-    else updateFields((fields) => replaceField(fields, editor.field.uid, editor.field))
+    if (editor.mode === 'add') {
+      setFields(addField(draft.fields, editor.parentUid, editor.field))
+    } else {
+      setFields(replaceField(draft.fields, editor.field.uid, editor.field))
+    }
     setEditor(null)
   }
-
-  const editorParent = editor?.parentUid ? findField(draft.fields, editor.parentUid)?.field : null
-  const editorTitle = !editor
-    ? ''
-    : editor.mode === 'edit'
-      ? 'Edit property'
-      : editorParent
-        ? `New property in ${editorParent.label || 'group'}`
-        : 'New property'
 
   // ---------- Saving, discarding, deleting, exporting ----------
 
@@ -227,18 +288,30 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
       toast.show({ status: 'error', message: `Fix ${plural(problemCount, 'problem')} before saving` })
       return
     }
-    const saved = { ...definition, version: baseline ? baseline.version + (isDirty ? 1 : 0) : 1 }
+
+    // The version goes up by one every time a changed blueprint is saved
+    let version = 1
+    if (baseline) {
+      version = baseline.version
+      if (isDirty) {
+        version++
+      }
+    }
+    const saved = { ...definition, version: version }
     saveBlueprint(saved, baseline?.id)
-    // Assets follow their blueprint when its ID changes
+
+    // Assets and dialogues follow their blueprint when its ID changes
     if (baseline && baseline.id !== saved.id) {
       moveAssetsToBlueprint(baseline.id, saved.id)
       retargetDialogueBlueprint(baseline.id, saved.id)
     }
+
     setBaseline(saved)
-    setDraft((current) => ({ ...current, version: saved.version }))
+    setDraft({ ...draft, version: saved.version })
     setShowAllErrors(false)
     setMetaTouched({})
     toast.show({ status: 'success', message: 'Blueprint saved' })
+
     if (saved.id !== blueprintId) {
       // New blueprint, or its ID changed: move to its new address
       allowLeaving()
@@ -247,7 +320,7 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
   }
 
   function handleDiscard() {
-    setDraft(toDraft(baseline ?? importedDefinition ?? EMPTY_BLUEPRINT))
+    setDraft(startingDraft(baseline, importedDefinition))
     setIdTouched(Boolean(baseline) || importedIdIsFixed)
     setShowAllErrors(false)
     setMetaTouched({})
@@ -272,77 +345,124 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
     toast.show({ status: 'success', message: 'Blueprint file downloaded' })
   }
 
-  const linkedFrom = baseline
-    ? blueprints.filter((blueprint) => blueprint.id !== baseline.id && usesBlueprint(blueprint.fields, baseline.id))
-    : []
-  const assetCount = baseline ? assets.filter((asset) => asset.schemaId === baseline.id).length : 0
-  const deleteMessage =
-    `Delete blueprint "${baseline?.name}"${assetCount > 0 ? ` and its ${plural(assetCount, 'asset')}` : ''}? This can't be undone.` +
-    (linkedFrom.length > 0
-      ? ` ${linkedFrom.map((blueprint) => blueprint.name).join(', ')} ${linkedFrom.length === 1 ? 'links' : 'link'} to it and will need updating.`
-      : '')
+  function handleDuplicate() {
+    const existingIds = []
+    for (const blueprint of blueprints) {
+      existingIds.push(blueprint.id)
+    }
+    navigate('/blueprints/new', { state: duplicateBlueprintState(baseline, existingIds) })
+  }
 
   // ---------- Preview ----------
 
-  const previewErrors = validateValues(draft.fields, sampleValues)
   // Only show errors for values the user has changed in the preview
-  const visiblePreviewErrors = Object.fromEntries(
-    Object.entries(previewErrors).filter(([path]) =>
-      touchedPaths.some((touched) => path === touched || path.startsWith(`${touched}.`)),
-    ),
-  )
+  const previewErrors = onlyTouchedErrors(validateValues(draft.fields, sampleValues), touchedPaths)
 
   function changeSampleValues(nextValues, changedPath) {
     setSampleValues(nextValues)
-    setTouchedPaths((current) => (current.includes(changedPath) ? current : [...current, changedPath]))
+    if (!touchedPaths.includes(changedPath)) {
+      setTouchedPaths([...touchedPaths, changedPath])
+    }
   }
 
-  // ---------- Status bar ----------
+  function resetSampleValues() {
+    setSampleValues({})
+    setTouchedPaths([])
+  }
 
-  const status =
-    showAllErrors && problemCount > 0
-      ? plural(problemCount, 'problem')
-      : isDirty
-        ? 'Unsaved changes'
-        : `Saved · version ${draft.version}`
+  let preview
+  if (previewTab === 'file') {
+    preview = (
+      <>
+        <p className="small muted">The file programmers load into the game engine. It updates as you edit.</p>
+        <JsonPreview value={definition} alwaysVisible />
+      </>
+    )
+  } else if (draft.fields.length === 0) {
+    preview = <EmptyState message="Add a property to see the asset form." />
+  } else {
+    preview = (
+      <>
+        <div className="row between small muted">
+          <p>The form teammates fill in for each asset. Try it out; nothing here is saved.</p>
+          <Button variant="ghost" icon={RotateCcw} onClick={resetSampleValues}>
+            Reset
+          </Button>
+        </div>
+        <FormRenderer fields={draft.fields} values={sampleValues} onChange={changeSampleValues} errors={previewErrors} />
+      </>
+    )
+  }
+
+  // ---------- Display ----------
+
+  let pageName = 'New blueprint'
+  if (draft.name) {
+    pageName = draft.name
+  } else if (baseline?.name) {
+    pageName = baseline.name
+  }
+
+  let paneTitle = 'New blueprint'
+  let savedBlueprintActions = null
+  if (baseline) {
+    paneTitle = 'Blueprint'
+    savedBlueprintActions = (
+      <>
+        <Button
+          variant="ghost"
+          icon={LayoutList}
+          title="View assets"
+          onClick={() => navigate(`/blueprints/${baseline.id}/assets`)}
+        />
+        <Button variant="ghost" icon={Copy} title="Duplicate blueprint" onClick={handleDuplicate} />
+      </>
+    )
+  }
+
+  let propertyList = (
+    <EmptyState message="No properties yet. Properties are the pieces of data every asset of this blueprint has.">
+      <Button icon={Plus} onClick={addTopLevelProperty}>
+        Add property
+      </Button>
+    </EmptyState>
+  )
+  if (draft.fields.length > 0) {
+    propertyList = (
+      <PropertyList
+        fields={draft.fields}
+        errors={errors}
+        blueprintNames={blueprintNames}
+        onEdit={openEditProperty}
+        onAdd={openAddProperty}
+        onMove={moveProperty}
+        onDuplicate={duplicateProperty}
+        onRemove={removeProperty}
+      />
+    )
+  }
+
+  // A new blueprint that started from a file or a copy says so at the top
+  const showImportNotice = Boolean(importedDefinition) && !baseline
+
+  let fieldsError = null
+  if (showAllErrors) {
+    fieldsError = errors.blueprint?.fields
+  }
 
   return (
     <AppShell
       actions={<TopBarActions noun="blueprint" newPath="/blueprints/new" importFile={parseBlueprintFile} />}
-      crumbs={[{ label: 'Blueprints', to: '/blueprints' }, { label: draft.name || baseline?.name || 'New blueprint' }]}
-      status={status}
+      crumbs={[{ label: 'Blueprints', to: '/blueprints' }, { label: pageName }]}
+      status={statusText(showAllErrors, problemCount, isDirty, draft.version)}
     >
       <div className="panes" style={{ '--panes': 'minmax(0, 1fr) minmax(360px, 0.85fr)' }}>
         <Section
-          title={baseline ? 'Blueprint' : 'New blueprint'}
+          title={paneTitle}
           actions={
             <>
-              {baseline && (
-                <Button
-                  variant="ghost"
-                  icon={LayoutList}
-                  title="View assets"
-                  onClick={() => navigate(`/blueprints/${baseline.id}/assets`)}
-                />
-              )}
-              {baseline && (
-                <Button
-                  variant="ghost"
-                  icon={Copy}
-                  title="Duplicate blueprint"
-                  onClick={() =>
-                    navigate('/blueprints/new', {
-                      state: duplicateBlueprintState(baseline, blueprints.map((blueprint) => blueprint.id)),
-                    })
-                  }
-                />
-              )}
-              <Button
-                variant="ghost"
-                icon={Download}
-                title="Download blueprint file"
-                onClick={handleExport}
-              />
+              {savedBlueprintActions}
+              <Button variant="ghost" icon={Download} title="Download blueprint file" onClick={handleExport} />
             </>
           }
           footer={
@@ -362,7 +482,7 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
           }
         >
           <div className="stack">
-            {importedDefinition && !baseline && (
+            {showImportNotice && (
               <ImportNotice isDuplicate={isDuplicate} originName={originName} extra=" Its assets aren't copied." />
             )}
 
@@ -386,108 +506,45 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
               <TextInput placeholder="item" value={draft.id} onChange={(event) => changeId(event.target.value)} />
             </PropertyRow>
             <PropertyRow label="Description" help="Optional. Tells teammates what it's for.">
-              <TextArea
-                value={draft.description}
-                onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
-              />
+              <TextArea value={draft.description} onChange={(event) => changeDescription(event.target.value)} />
             </PropertyRow>
 
             <div className="subhead">
               <h2>
                 Properties <span className="subtle">{countProperties(draft.fields)}</span>
               </h2>
-              <Button variant="ghost" icon={Plus} onClick={() => openAddProperty()}>
+              <Button variant="ghost" icon={Plus} onClick={addTopLevelProperty}>
                 Add property
               </Button>
             </div>
-            {showAllErrors && errors.blueprint?.fields && (
-              <p className="field-error">{errors.blueprint.fields}</p>
-            )}
-            {draft.fields.length > 0 ? (
-              <PropertyList
-                fields={draft.fields}
-                errors={errors}
-                blueprintNames={blueprintNames}
-                onEdit={openEditProperty}
-                onAdd={openAddProperty}
-                onMove={(uid, direction) => updateFields((fields) => moveField(fields, uid, direction))}
-                onDuplicate={(uid) => updateFields((fields) => duplicateField(fields, uid))}
-                onRemove={removeProperty}
-              />
-            ) : (
-              <EmptyState message="No properties yet. Properties are the pieces of data every asset of this blueprint has.">
-                <Button icon={Plus} onClick={() => openAddProperty()}>
-                  Add property
-                </Button>
-              </EmptyState>
-            )}
+            {fieldsError && <p className="field-error">{fieldsError}</p>}
+            {propertyList}
           </div>
         </Section>
 
         <Section
           title="Preview"
-          actions={
-            <SegmentedControl options={PREVIEW_TABS} value={previewTab} onChange={setPreviewTab} />
-          }
+          actions={<SegmentedControl options={PREVIEW_TABS} value={previewTab} onChange={setPreviewTab} />}
         >
-          {previewTab === 'form' ? (
-            draft.fields.length === 0 ? (
-              <EmptyState message="Add a property to see the asset form." />
-            ) : (
-              <>
-                <div className="row between small muted">
-                  <p>The form teammates fill in for each asset. Try it out; nothing here is saved.</p>
-                  <Button
-                    variant="ghost"
-                    icon={RotateCcw}
-                    onClick={() => {
-                      setSampleValues({})
-                      setTouchedPaths([])
-                    }}
-                  >
-                    Reset
-                  </Button>
-                </div>
-                <FormRenderer
-                  fields={draft.fields}
-                  values={sampleValues}
-                  onChange={changeSampleValues}
-                  errors={visiblePreviewErrors}
-                />
-              </>
-            )
-          ) : (
-            <>
-              <div className="row between small muted">
-                <p>The file programmers load into the game engine. It updates as you edit.</p>
-              </div>
-              <JsonPreview value={definition} alwaysVisible />
-            </>
-          )}
+          {preview}
         </Section>
       </div>
 
       {editor && (
-        <SidePanel
-          title={editorTitle}
-          onClose={() => setEditor(null)}
-          footer={
-            <>
-              <Button onClick={() => setEditor(null)}>Cancel</Button>
-              <Button variant="primary" onClick={applyEditor}>
-                {editor.mode === 'add' ? 'Add property' : 'Apply changes'}
-              </Button>
-            </>
-          }
-        >
-          <PropertyEditor editor={editor} setEditor={setEditor} errors={editorErrors} blueprintOptions={blueprintOptions} />
-        </SidePanel>
+        <PropertyPanel
+          editor={editor}
+          setEditor={setEditor}
+          draftFields={draft.fields}
+          errors={editorErrors}
+          blueprintOptions={blueprintOptions}
+          onApply={applyEditor}
+        />
       )}
 
       {confirmDelete && (
         <ConfirmDialog
           title="Delete blueprint?"
-          message={deleteMessage}
+          message={deleteMessage(baseline, blueprints, assets)}
           confirmLabel="Delete blueprint"
           onCancel={() => setConfirmDelete(false)}
           onConfirm={handleDelete}
@@ -497,6 +554,135 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
       <UnsavedChangesDialog blocker={blocker} name={draft.name || 'this blueprint'} />
     </AppShell>
   )
+}
+
+/** The side panel for adding or editing one property. */
+function PropertyPanel({ editor, setEditor, draftFields, errors, blueprintOptions, onApply }) {
+  let title = 'Edit property'
+  let applyLabel = 'Apply changes'
+  if (editor.mode === 'add') {
+    applyLabel = 'Add property'
+    title = 'New property'
+    // Adding inside a group: say which one
+    if (editor.parentUid) {
+      const parent = findField(draftFields, editor.parentUid)?.field
+      if (parent) {
+        title = `New property in ${parent.label || 'group'}`
+      }
+    }
+  }
+
+  function close() {
+    setEditor(null)
+  }
+
+  return (
+    <SidePanel
+      title={title}
+      onClose={close}
+      footer={
+        <>
+          <Button onClick={close}>Cancel</Button>
+          <Button variant="primary" onClick={onApply}>
+            {applyLabel}
+          </Button>
+        </>
+      }
+    >
+      <PropertyEditor editor={editor} setEditor={setEditor} errors={errors} blueprintOptions={blueprintOptions} />
+    </SidePanel>
+  )
+}
+
+// ---------- Helpers ----------
+
+// The saved blueprint for this URL, or null for a new one (or when the URL's blueprint doesn't exist)
+function findSavedBlueprint(blueprints, blueprintId) {
+  if (!blueprintId) {
+    return null
+  }
+  const found = blueprints.find((blueprint) => blueprint.id === blueprintId)
+  return found ?? null
+}
+
+// The draft the builder starts with (and goes back to on Discard)
+function startingDraft(baseline, importedDefinition) {
+  if (baseline) {
+    return toDraft(baseline)
+  }
+  if (importedDefinition) {
+    return toDraft(importedDefinition)
+  }
+  return toDraft(EMPTY_BLUEPRINT)
+}
+
+// Every blueprint a link can point to, as { id, name }: the others, plus this one if it has an ID yet
+function findLinkTargets(blueprints, baseline, draft) {
+  const targets = []
+  for (const blueprint of blueprints) {
+    if (blueprint.id !== baseline?.id && blueprint.id) {
+      targets.push(blueprint)
+    }
+  }
+  if (draft.id) {
+    targets.push({ id: draft.id, name: draft.name })
+  }
+  return targets
+}
+
+// The properties next to the one in the side panel (its ID must be different from theirs)
+function editorSiblings(editor, draftFields) {
+  if (editor.mode === 'edit') {
+    return findField(draftFields, editor.field.uid)?.siblings ?? []
+  }
+  if (editor.parentUid) {
+    // Adding inside a group: the group's own properties
+    return findField(draftFields, editor.parentUid)?.field.fields ?? []
+  }
+  return draftFields
+}
+
+// The delete confirmation, mentioning its assets and any blueprints that link to it
+function deleteMessage(baseline, blueprints, assets) {
+  let assetCount = 0
+  for (const asset of assets) {
+    if (asset.schemaId === baseline.id) {
+      assetCount++
+    }
+  }
+
+  const linkingNames = []
+  for (const blueprint of blueprints) {
+    if (blueprint.id !== baseline.id && usesBlueprint(blueprint.fields, baseline.id)) {
+      linkingNames.push(blueprint.name)
+    }
+  }
+
+  let message = `Delete blueprint "${baseline.name}"`
+  if (assetCount > 0) {
+    message = `${message} and its ${plural(assetCount, 'asset')}`
+  }
+  message = `${message}? This can't be undone.`
+
+  if (linkingNames.length > 0) {
+    let verb = 'link'
+    if (linkingNames.length === 1) {
+      verb = 'links'
+    }
+    message = `${message} ${linkingNames.join(', ')} ${verb} to it and will need updating.`
+  }
+  return message
+}
+
+// The status bar text
+function statusText(showAllErrors, problemCount, isDirty, version) {
+  if (showAllErrors && problemCount > 0) {
+    return plural(problemCount, 'problem')
+  }
+  if (isDirty) {
+    return 'Unsaved changes'
+  }
+  return `Saved · version ${version}`
 }
 
 export default BlueprintBuilderPage

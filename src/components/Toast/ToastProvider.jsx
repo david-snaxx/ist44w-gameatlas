@@ -10,14 +10,20 @@ function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([])
 
   function dismiss(id) {
+    // The "current =>" form gives the newest list, even when a timer calls this seconds later
     setToasts((current) => current.filter((toast) => toast.id !== id))
   }
 
   function show({ status = 'info', message, action }) {
-    const id = nextToastId++
-    setToasts((current) => [...current, { id, status, message, action }])
+    const id = nextToastId
+    nextToastId++
+    const toast = { id: id, status: status, message: message, action: action }
+    setToasts((current) => [...current, toast])
+
     // Errors stay until the user closes them; everything else disappears after 4 seconds
-    if (status !== 'error') setTimeout(() => dismiss(id), 4000)
+    if (status !== 'error') {
+      setTimeout(() => dismiss(id), 4000)
+    }
   }
 
   return (
@@ -26,24 +32,30 @@ function ToastProvider({ children }) {
       {children}
       <div className="toasts">
         {toasts.map((toast) => (
-          <div key={toast.id} className={`glass toast toast-${toast.status}`}>
-            <p className="toast-message">{toast.message}</p>
-            {toast.action && (
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  toast.action.onClick()
-                  dismiss(toast.id)
-                }}
-              >
-                {toast.action.label}
-              </Button>
-            )}
-            <Button variant="ghost" icon={X} title="Dismiss" onClick={() => dismiss(toast.id)} />
-          </div>
+          <ToastMessage key={toast.id} toast={toast} onDismiss={dismiss} />
         ))}
       </div>
     </ToastContext>
+  )
+}
+
+/** One message, with its action button (e.g. Undo) if it has one, and a close button. */
+function ToastMessage({ toast, onDismiss }) {
+  function handleAction() {
+    toast.action.onClick()
+    onDismiss(toast.id)
+  }
+
+  return (
+    <div className={`glass toast toast-${toast.status}`}>
+      <p className="toast-message">{toast.message}</p>
+      {toast.action && (
+        <Button variant="ghost" onClick={handleAction}>
+          {toast.action.label}
+        </Button>
+      )}
+      <Button variant="ghost" icon={X} title="Dismiss" onClick={() => onDismiss(toast.id)} />
+    </div>
   )
 }
 

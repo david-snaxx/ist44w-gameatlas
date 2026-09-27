@@ -7,7 +7,6 @@ import EmptyState from '../../components/EmptyState/EmptyState.jsx'
 import ValueRenderer from '../../components/form/ValueRenderer.jsx'
 import JsonPreview from '../../components/JsonPreview/JsonPreview.jsx'
 import LinkList from '../../components/LinkList/LinkList.jsx'
-import MissingRecord from '../../components/MissingRecord/MissingRecord.jsx'
 import Notice from '../../components/Notice/Notice.jsx'
 import Section from '../../components/Section/Section.jsx'
 import TopBarActions from '../../components/TopBarActions/TopBarActions.jsx'
@@ -31,6 +30,7 @@ import { validateValues } from '../../schema/validation.js'
 import { downloadJson } from '../../utils/downloadJson.js'
 import { formatDateTime } from '../../utils/formatDate.js'
 import { plural } from '../../utils/plural.js'
+import MissingAsset from './MissingAsset.jsx'
 import styles from './AssetViewPage.module.css'
 
 /** A read-only page for one saved asset, with an export button (/blueprints/:blueprintId/assets/:assetKey). */
@@ -43,64 +43,32 @@ function AssetViewPage() {
   const toast = useToast()
 
   const blueprint = blueprints.find((candidate) => candidate.id === blueprintId)
-  const asset = blueprint && assets.find((candidate) => candidate.schemaId === blueprint.id && candidate.key === assetKey)
+  let asset = null
+  if (blueprint) {
+    asset = assets.find((candidate) => candidate.schemaId === blueprint.id && candidate.key === assetKey)
+  }
 
   if (!blueprint || !asset) {
-    return (
-      <MissingRecord
-        title={blueprint ? 'Asset not found' : 'Blueprint not found'}
-        message={
-          blueprint
-            ? `There's no ${blueprint.name} asset with the ID "${assetKey}".`
-            : `There's no blueprint with the ID "${blueprintId}".`
-        }
-        back={
-          blueprint
-            ? { to: `/blueprints/${blueprint.id}/assets`, label: `All ${blueprint.name} assets` }
-            : { to: '/blueprints', label: 'All blueprints' }
-        }
-      />
-    )
+    return <MissingAsset blueprint={blueprint} blueprintId={blueprintId} assetKey={assetKey} />
   }
 
   const name = assetLabel(asset, blueprint)
   const isOutdated = asset.schemaVersion < blueprint.version
-
-  // Problems the saved data has against the blueprint as it is now (e.g. after the blueprint changed)
   const referenceKeys = referenceKeysFor(blueprints, assets)
-  const problems = Object.entries(
-    validateValues(blueprint.fields, toFormValues(blueprint.fields, asset.data), '', referenceKeys),
-  ).map(([path, message]) => ({ path, label: labelForPath(blueprint.fields, path), message }))
+  const problems = listProblems(asset, blueprint, referenceKeys)
+  const linkedFrom = findLinksTo(asset, blueprint, assets, blueprints, dialogues)
+  const exportShape = toExport(asset)
+  const editPath = `${assetPath(blueprint.id, asset.key)}/edit`
 
+  // For ValueRenderer: where a link property points, or null if that asset is gone
   function resolveLink(targetSchema, key) {
     const targetBlueprint = blueprints.find((candidate) => candidate.id === targetSchema)
     const target = assets.find((candidate) => candidate.schemaId === targetSchema && candidate.key === key)
-    return targetBlueprint && target ? { label: assetLabel(target, targetBlueprint), to: assetPath(targetSchema, key) } : null
+    if (!targetBlueprint || !target) {
+      return null
+    }
+    return { label: assetLabel(target, targetBlueprint), to: assetPath(targetSchema, key) }
   }
-
-  // Everything that points at this asset
-  const linkedFrom = [
-    ...assets
-      .filter((other) => other.id !== asset.id)
-      .map((other) => ({ other, otherBlueprint: blueprints.find((candidate) => candidate.id === other.schemaId) }))
-      .filter(({ other, otherBlueprint }) => otherBlueprint && linksTo(otherBlueprint.fields, other.data, blueprint.id, asset.key))
-      .map(({ other, otherBlueprint }) => ({
-        icon: Box,
-        label: assetLabel(other, otherBlueprint),
-        hint: `${otherBlueprint.name} · ${other.key}`,
-        to: assetPath(other.schemaId, other.key),
-      })),
-    ...dialogues
-      .filter((dialogue) => dialogueLinksToAsset(dialogue, blueprint.id, asset.key))
-      .map((dialogue) => ({
-        icon: MessagesSquare,
-        label: dialogue.name,
-        hint: `Dialogue · ${dialogue.key}`,
-        to: `/dialogues/${dialogue.key}`,
-      })),
-  ]
-
-  const exportShape = toExport(asset)
 
   function handleExport() {
     if (problems.length > 0) {
@@ -114,7 +82,16 @@ function AssetViewPage() {
     toast.show({ status: 'success', message: 'Asset file downloaded' })
   }
 
-  const editPath = `${assetPath(blueprint.id, asset.key)}/edit`
+  function handleDuplicate() {
+    const blueprintAssets = assets.filter((candidate) => candidate.schemaId === blueprint.id)
+    const state = duplicateAssetState(asset, blueprint, blueprintAssets)
+    navigate(`/blueprints/${blueprint.id}/assets/new`, { state: state })
+  }
+
+  let properties = <EmptyState message={`The ${blueprint.name} blueprint has no properties.`} />
+  if (blueprint.fields.length > 0) {
+    properties = <ValueRenderer fields={blueprint.fields} data={asset.data} resolveLink={resolveLink} />
+  }
 
   return (
     <AppShell
@@ -140,26 +117,11 @@ function AssetViewPage() {
             <div className="row">
               <code className="muted">{asset.key}</code>
               {isOutdated && <Badge tone="warning">Outdated</Badge>}
-              {problems.length > 0 ? (
-                <Badge tone="error">{plural(problems.length, 'problem')}</Badge>
-              ) : (
-                <Badge tone="success">Ready to export</Badge>
-              )}
+              <ExportStatus problemCount={problems.length} />
             </div>
           </div>
           <div className="page-actions">
-            <Button
-              icon={Copy}
-              onClick={() =>
-                navigate(`/blueprints/${blueprint.id}/assets/new`, {
-                  state: duplicateAssetState(
-                    asset,
-                    blueprint,
-                    assets.filter((candidate) => candidate.schemaId === blueprint.id),
-                  ),
-                })
-              }
-            >
+            <Button icon={Copy} onClick={handleDuplicate}>
               Duplicate
             </Button>
             <Button icon={Pencil} onClick={() => navigate(editPath)}>
@@ -171,50 +133,14 @@ function AssetViewPage() {
           </div>
         </header>
 
-        {problems.length > 0 && (
-          <Notice tone="warning">
-            <p>
-              This asset doesn't match its blueprint anymore, so it can't be exported yet.{' '}
-              <Link to={editPath}>Edit it</Link> to fix:
-            </p>
-            <ul className={styles.problemList}>
-              {problems.map((problem) => (
-                <li key={problem.path}>
-                  <strong>{problem.label}</strong>: {problem.message}
-                </li>
-              ))}
-            </ul>
-          </Notice>
-        )}
+        {problems.length > 0 && <ProblemsNotice problems={problems} editPath={editPath} />}
 
         <div className={styles.columns}>
-          <Section title="Properties">
-            {blueprint.fields.length > 0 ? (
-              <ValueRenderer fields={blueprint.fields} data={asset.data} resolveLink={resolveLink} />
-            ) : (
-              <EmptyState message={`The ${blueprint.name} blueprint has no properties.`} />
-            )}
-          </Section>
+          <Section title="Properties">{properties}</Section>
 
           <div className={styles.side}>
             <Section title="Details">
-              <div className={styles.details}>
-                <span className="muted">ID</span>
-                <span>{asset.key}</span>
-                <span className="muted">Blueprint</span>
-                <span>
-                  <Link to={`/blueprints/${blueprint.id}/assets`}>{blueprint.name}</Link>
-                  <span className="subtle">
-                    {' '}
-                    · version {asset.schemaVersion}
-                    {isOutdated ? ` (now ${blueprint.version})` : ''}
-                  </span>
-                </span>
-                <span className="muted">Created</span>
-                <span>{formatDateTime(asset.createdAt)}</span>
-                <span className="muted">Updated</span>
-                <span>{formatDateTime(asset.updatedAt)}</span>
-              </div>
+              <AssetDetails asset={asset} blueprint={blueprint} isOutdated={isOutdated} />
             </Section>
 
             <Section title="Linked from">
@@ -230,6 +156,108 @@ function AssetViewPage() {
       </div>
     </AppShell>
   )
+}
+
+/** The badge next to the asset's ID: how many problems it has, or that it's ready to export. */
+function ExportStatus({ problemCount }) {
+  if (problemCount > 0) {
+    return <Badge tone="error">{plural(problemCount, 'problem')}</Badge>
+  }
+  return <Badge tone="success">Ready to export</Badge>
+}
+
+/** A warning that lists what no longer matches the blueprint, with a link to the editor. */
+function ProblemsNotice({ problems, editPath }) {
+  return (
+    <Notice tone="warning">
+      <p>
+        This asset doesn't match its blueprint anymore, so it can't be exported yet.{' '}
+        <Link to={editPath}>Edit it</Link> to fix:
+      </p>
+      <ul className={styles.problemList}>
+        {problems.map((problem) => (
+          <li key={problem.path}>
+            <strong>{problem.label}</strong>: {problem.message}
+          </li>
+        ))}
+      </ul>
+    </Notice>
+  )
+}
+
+/** ID, blueprint (and version), created and updated, as label | value pairs. */
+function AssetDetails({ asset, blueprint, isOutdated }) {
+  let versionText = ` · version ${asset.schemaVersion}`
+  if (isOutdated) {
+    versionText = `${versionText} (now ${blueprint.version})`
+  }
+
+  return (
+    <div className={styles.details}>
+      <span className="muted">ID</span>
+      <span>{asset.key}</span>
+
+      <span className="muted">Blueprint</span>
+      <span>
+        <Link to={`/blueprints/${blueprint.id}/assets`}>{blueprint.name}</Link>
+        <span className="subtle">{versionText}</span>
+      </span>
+
+      <span className="muted">Created</span>
+      <span>{formatDateTime(asset.createdAt)}</span>
+
+      <span className="muted">Updated</span>
+      <span>{formatDateTime(asset.updatedAt)}</span>
+    </div>
+  )
+}
+
+// Problems the saved data has against the blueprint as it is now (e.g. after the blueprint changed)
+function listProblems(asset, blueprint, referenceKeys) {
+  const values = toFormValues(blueprint.fields, asset.data)
+  const errors = validateValues(blueprint.fields, values, '', referenceKeys)
+
+  const problems = []
+  for (const path of Object.keys(errors)) {
+    problems.push({ path: path, label: labelForPath(blueprint.fields, path), message: errors[path] })
+  }
+  return problems
+}
+
+// Everything that points at this asset: other assets that link to it, and dialogues that use it
+function findLinksTo(asset, blueprint, assets, blueprints, dialogues) {
+  const links = []
+
+  for (const other of assets) {
+    if (other.id === asset.id) {
+      continue
+    }
+    const otherBlueprint = blueprints.find((candidate) => candidate.id === other.schemaId)
+    if (!otherBlueprint) {
+      continue
+    }
+    if (linksTo(otherBlueprint.fields, other.data, blueprint.id, asset.key)) {
+      links.push({
+        icon: Box,
+        label: assetLabel(other, otherBlueprint),
+        hint: `${otherBlueprint.name} · ${other.key}`,
+        to: assetPath(other.schemaId, other.key),
+      })
+    }
+  }
+
+  for (const dialogue of dialogues) {
+    if (dialogueLinksToAsset(dialogue, blueprint.id, asset.key)) {
+      links.push({
+        icon: MessagesSquare,
+        label: dialogue.name,
+        hint: `Dialogue · ${dialogue.key}`,
+        to: `/dialogues/${dialogue.key}`,
+      })
+    }
+  }
+
+  return links
 }
 
 export default AssetViewPage

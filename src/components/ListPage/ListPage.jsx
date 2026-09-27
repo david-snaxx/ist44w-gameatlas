@@ -33,6 +33,18 @@ function ListPage({
   onSelect,
   empty,
 }) {
+  // The search box only makes sense once there is something to search
+  const showToolbar = total > 0 && Boolean(onSearch)
+
+  let content
+  if (total === 0) {
+    content = empty
+  } else if (rows.length === 0) {
+    content = <EmptyState message={`No ${noun}s match.`} />
+  } else {
+    content = <Table columns={columns} rows={rows} onSelect={onSelect} />
+  }
+
   return (
     <AppShell actions={topBarActions} crumbs={crumbs} status={plural(total, noun)}>
       <div className="page">
@@ -44,7 +56,7 @@ function ListPage({
           <div className="page-actions">{actions}</div>
         </header>
 
-        {total > 0 && onSearch && (
+        {showToolbar && (
           <div className="toolbar">
             <TextInput
               type="search"
@@ -56,13 +68,7 @@ function ListPage({
           </div>
         )}
 
-        {total === 0 ? (
-          empty
-        ) : rows.length === 0 ? (
-          <EmptyState message={`No ${noun}s match.`} />
-        ) : (
-          <Table columns={columns} rows={rows} onSelect={onSelect} />
-        )}
+        {content}
       </div>
     </AppShell>
   )

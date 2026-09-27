@@ -10,38 +10,54 @@ import TypeSettings from './TypeSettings.jsx'
  * The side panel's content for adding or editing one property.
  *
  * editor: { field, keyTouched, touched, showErrors } (owned by the builder page)
- * setEditor: the page's state setter; updates use the functional form so they never read stale state
+ * setEditor: the page's state setter for `editor`
  * errors: the property's validation errors
  */
 function PropertyEditor({ editor, setEditor, errors, blueprintOptions }) {
-  const { field } = editor
+  const field = editor.field
 
   // Show a setting's error once the user has touched it, or after they tried to apply
-  const errorFor = (name) => (editor.showErrors || editor.touched[name] ? errors[name] : undefined)
+  function errorFor(settingName) {
+    if (editor.showErrors || editor.touched[settingName]) {
+      return errors[settingName]
+    }
+    return undefined
+  }
 
-  function change(name, changes, extra = {}) {
-    setEditor((current) => ({
-      ...current,
-      ...extra,
-      field: { ...current.field, ...changes },
-      touched: { ...current.touched, [name]: true },
-    }))
+  // Merges `changes` into the property (e.g. { label: 'Damage' }) and marks the setting as touched
+  function change(settingName, changes) {
+    setEditor(editorWithChanges(editor, settingName, changes))
   }
 
   function changeLabel(label) {
+    const changes = { label: label }
     // The ID follows the label until the user edits the ID themselves
-    change('label', editor.keyTouched ? { label } : { label, key: toCamelCase(label) })
+    if (!editor.keyTouched) {
+      changes.key = toCamelCase(label)
+    }
+    change('label', changes)
+  }
+
+  function changeKey(key) {
+    const nextEditor = editorWithChanges(editor, 'key', { key: key })
+    nextEditor.keyTouched = true
+    setEditor(nextEditor)
   }
 
   function changeType(type) {
-    setEditor((current) => {
-      const { uid, key, label, required, help, fields } = current.field
-      // Settings don't carry over between types; a group keeps its nested properties
-      const nextField = createField(type, { uid, key, label, required, help, fields })
-      return { ...current, field: nextField }
+    // Settings don't carry over between types; a group keeps its nested properties
+    const nextField = createField(type, {
+      uid: field.uid,
+      key: field.key,
+      label: field.label,
+      required: field.required,
+      help: field.help,
+      fields: field.fields,
     })
+    setEditor({ ...editor, field: nextField })
   }
 
+  // Vectors have no settings of their own
   const hasTypeSettings = field.type !== 'vector2' && field.type !== 'vector3'
 
   return (
@@ -61,11 +77,7 @@ function PropertyEditor({ editor, setEditor, errors, blueprintOptions }) {
         error={errorFor('key')}
         help="The name used in exported files. It follows the label until you change it."
       >
-        <TextInput
-          placeholder="damage"
-          value={field.key}
-          onChange={(event) => change('key', { key: event.target.value }, { keyTouched: true })}
-        />
+        <TextInput placeholder="damage" value={field.key} onChange={(event) => changeKey(event.target.value)} />
       </PropertyRow>
 
       <PropertyRow label="Type" help={FIELD_TYPES[field.type].description}>
@@ -74,7 +86,7 @@ function PropertyEditor({ editor, setEditor, errors, blueprintOptions }) {
 
       {supportsRequired(field.type) && (
         <PropertyRow label="Required" help="Assets can't be saved until this has a value.">
-          <Checkbox checked={field.required} onChange={(required) => change('required', { required })} />
+          <Checkbox checked={field.required} onChange={(required) => change('required', { required: required })} />
         </PropertyRow>
       )}
 
@@ -90,6 +102,13 @@ function PropertyEditor({ editor, setEditor, errors, blueprintOptions }) {
       )}
     </>
   )
+}
+
+// A copy of the editor state with `changes` merged into its property and the setting marked as touched
+function editorWithChanges(editor, settingName, changes) {
+  const nextField = { ...editor.field, ...changes }
+  const nextTouched = { ...editor.touched, [settingName]: true }
+  return { ...editor, field: nextField, touched: nextTouched }
 }
 
 export default PropertyEditor

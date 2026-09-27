@@ -8,11 +8,10 @@ import { plural } from '../../utils/plural.js'
  */
 function ValidationSummary({ problems, hiddenCount, onSelect }) {
   if (problems.length === 0) {
-    return hiddenCount > 0 ? (
-      <p className="muted">Some properties still need values before this can be saved.</p>
-    ) : (
-      <p className="checks-ok">No problems</p>
-    )
+    if (hiddenCount > 0) {
+      return <p className="muted">Some properties still need values before this can be saved.</p>
+    }
+    return <p className="checks-ok">No problems</p>
   }
 
   return (
@@ -20,19 +19,34 @@ function ValidationSummary({ problems, hiddenCount, onSelect }) {
       <p className="checks-title">{plural(problems.length, 'problem')}</p>
       <ul className="checks-list">
         {problems.map((problem) => (
-          <li key={problem.id}>
-            <button
-              type="button"
-              className="link-button"
-              onClick={() => (onSelect ? onSelect(problem) : document.getElementById(problem.id)?.focus())}
-            >
-              {problem.label}
-            </button>
-            <span className="muted">: {problem.message}</span>
-          </li>
+          <ProblemItem key={problem.id} problem={problem} onSelect={onSelect} />
         ))}
       </ul>
     </div>
+  )
+}
+
+/** One problem: the property's name (clickable) and what's wrong with it. */
+function ProblemItem({ problem, onSelect }) {
+  function handleClick() {
+    if (onSelect) {
+      onSelect(problem)
+      return
+    }
+    // Otherwise put the cursor in the input that has the problem
+    const input = document.getElementById(problem.id)
+    if (input) {
+      input.focus()
+    }
+  }
+
+  return (
+    <li>
+      <button type="button" className="link-button" onClick={handleClick}>
+        {problem.label}
+      </button>
+      <span className="muted">: {problem.message}</span>
+    </li>
   )
 }
 

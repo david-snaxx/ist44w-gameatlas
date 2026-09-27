@@ -14,7 +14,11 @@ import SettingsPage from './pages/Settings/SettingsPage.jsx'
 
 // The dialogue editor brings in React Flow, which is large, so it's only downloaded when that page is opened
 const DialogueEditorPage = lazy(() => import('./pages/Dialogues/DialogueEditorPage.jsx'))
-const lazyPage = (page) => <Suspense fallback={null}>{page}</Suspense>
+
+// A lazily loaded page shows nothing for the moment it takes to download
+function lazyPage(page) {
+  return <Suspense fallback={null}>{page}</Suspense>
+}
 
 // Every page and its URL. (A "data router" like this one is needed for the unsaved-changes guard.)
 const router = createBrowserRouter([

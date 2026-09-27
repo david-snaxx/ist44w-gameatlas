@@ -1,6 +1,7 @@
 import { toSnakeCase } from '../schema/blueprintDraft.js'
 import { BLUEPRINT_ID_PATTERN, PROPERTY_KEY_PATTERN } from '../schema/validation.js'
 import { uniqueKey } from '../utils/uniqueKey.js'
+import { referenceKeysFor } from './assetData.js'
 
 /*
  * Dialogue trees.
@@ -34,25 +35,45 @@ export const ACTION_TYPES = [
   { value: 'setFlag', label: 'Set story flag' },
 ]
 
+// Story flags follow the same rule as property IDs
 const FLAG_PATTERN = PROPERTY_KEY_PATTERN
 
-export const edgeId = (source, sourceHandle, target) => `${source}:${sourceHandle}->${target}`
+export function edgeId(source, sourceHandle, target) {
+  return `${source}:${sourceHandle}->${target}`
+}
+
+// Which output a connection leaves from. Older connections without one leave from "next".
+function handleOf(edge) {
+  return edge.sourceHandle ?? 'next'
+}
 
 // ---------- Creating nodes ----------
 
-/** The next free readable node ID, e.g. "line_3". These IDs appear in exported files. */
+/** The first free ID like "line_1", "line_2", … These IDs appear in exported files. */
 function nextNodeId(nodes, type) {
-  const taken = new Set(nodes.map((node) => node.id))
+  const takenIds = []
+  for (const node of nodes) {
+    takenIds.push(node.id)
+  }
+
   let number = 1
-  while (taken.has(`${type}_${number}`)) number++
+  while (takenIds.includes(`${type}_${number}`)) {
+    number++
+  }
   return `${type}_${number}`
 }
 
 /** The next free response ID within one choice, e.g. "response_3". */
 export function nextResponseId(options) {
-  const taken = new Set(options.map((option) => option.id))
+  const takenIds = []
+  for (const option of options) {
+    takenIds.push(option.id)
+  }
+
   let number = 1
-  while (taken.has(`response_${number}`)) number++
+  while (takenIds.includes(`response_${number}`)) {
+    number++
+  }
   return `response_${number}`
 }
 
@@ -77,7 +98,7 @@ function defaultNodeData(type) {
 }
 
 export function createNode(type, existingNodes, position) {
-  return { id: nextNodeId(existingNodes, type), type, position, data: defaultNodeData(type) }
+  return { id: nextNodeId(existingNodes, type), type: type, position: position, data: defaultNodeData(type) }
 }
 
 /** What a brand-new dialogue starts with: Start connected to one empty line. */
@@ -95,36 +116,65 @@ export function createDialogueGraph() {
 
 /** A short name for a node in problem lists, e.g. `Line “Ah, a traveler…”`. */
 export function nodeLabel(node) {
-  const type = NODE_TYPES[node.type]?.label ?? node.type
-  if (node.type === 'line' && node.data.text?.trim()) {
-    const text = node.data.text.trim()
-    return `${type} “${text.length > 28 ? `${text.slice(0, 28)}…` : text}”`
+  const typeLabel = NODE_TYPES[node.type]?.label ?? node.type
+
+  if (node.type === 'line') {
+    const text = node.data.text?.trim()
+    if (text) {
+      let preview = text
+      if (text.length > 28) {
+        preview = `${text.slice(0, 28)}…`
+      }
+      return `${typeLabel} “${preview}”`
+    }
   }
-  return `${type} (${node.id})`
+
+  return `${typeLabel} (${node.id})`
 }
 
 export function countNodes(nodes, type) {
-  return nodes.filter((node) => node.type === type).length
+  let count = 0
+  for (const node of nodes) {
+    if (node.type === type) {
+      count++
+    }
+  }
+  return count
 }
 
 // ---------- Canvas <-> storage ----------
 
 /** Strips React Flow's runtime fields (selected, measured, dragging…) so only real content is saved. */
 export function toStoredGraph(nodes, edges) {
-  return {
-    nodes: nodes.map(({ id, type, position, data }) => ({
-      id,
-      type,
-      position: { x: Math.round(position.x), y: Math.round(position.y) },
-      data,
-    })),
-    edges: edges.map(({ id, source, sourceHandle, target }) => ({ id, source, sourceHandle: sourceHandle ?? 'next', target })),
+  const storedNodes = []
+  for (const node of nodes) {
+    storedNodes.push({
+      id: node.id,
+      type: node.type,
+      position: { x: Math.round(node.position.x), y: Math.round(node.position.y) },
+      data: node.data,
+    })
   }
+
+  const storedEdges = []
+  for (const edge of edges) {
+    storedEdges.push({ id: edge.id, source: edge.source, sourceHandle: handleOf(edge), target: edge.target })
+  }
+
+  return { nodes: storedNodes, edges: storedEdges }
 }
 
 /** Stored nodes -> canvas nodes. Start can't be deleted. */
 export function toCanvasNodes(nodes) {
-  return nodes.map((node) => (node.type === 'start' ? { ...node, deletable: false } : node))
+  const canvasNodes = []
+  for (const node of nodes) {
+    if (node.type === 'start') {
+      canvasNodes.push({ ...node, deletable: false })
+    } else {
+      canvasNodes.push(node)
+    }
+  }
+  return canvasNodes
 }
 
 // ---------- Export ----------
@@ -134,173 +184,337 @@ export function toCanvasNodes(nodes) {
  * canvas positions and editor-only fields are left out.
  */
 export function toDialogueExport(dialogue) {
-  const { nodes, edges } = dialogue
-  const nextOf = (nodeId, handle) =>
-    edges.find((edge) => edge.source === nodeId && (edge.sourceHandle ?? 'next') === handle)?.target ?? null
-  const start = nodes.find((node) => node.type === 'start')
-
-  const exportNode = (node) => {
-    const data = node.data ?? {}
-    switch (node.type) {
-      case 'line':
-        return { id: node.id, type: 'line', speaker: data.speaker || null, text: data.text ?? '', next: nextOf(node.id, 'next') }
-      case 'choice':
-        return {
-          id: node.id,
-          type: 'choice',
-          responses: (data.options ?? []).map((option) => ({
-            id: option.id,
-            text: option.text ?? '',
-            next: nextOf(node.id, `option:${option.id}`),
-          })),
-        }
-      case 'condition':
-        return { id: node.id, type: 'checkFlag', flag: data.flag ?? '', ifSet: nextOf(node.id, 'yes'), ifNotSet: nextOf(node.id, 'no') }
-      case 'action':
-        return data.action === 'setFlag'
-          ? { id: node.id, type: 'setFlag', flag: data.flag ?? '', value: Boolean(data.value), next: nextOf(node.id, 'next') }
-          : {
-              id: node.id,
-              type: 'giveItem',
-              item: data.item || null,
-              quantity: Number(data.quantity) || 1,
-              next: nextOf(node.id, 'next'),
-            }
-      default:
-        return { id: node.id, type: 'end' }
-    }
-  }
+  const nodes = dialogue.nodes
+  const edges = dialogue.edges
 
   const file = { id: dialogue.key, type: 'dialogue', name: dialogue.name }
-  if (dialogue.description?.trim()) file.description = dialogue.description.trim()
+  if (dialogue.description?.trim()) {
+    file.description = dialogue.description.trim()
+  }
   file.speakerBlueprint = dialogue.speakerBlueprint || null
   file.itemBlueprint = dialogue.itemBlueprint || null
-  file.startNode = start ? nextOf(start.id, 'next') : null
-  file.nodes = nodes.filter((node) => node.type !== 'start').map(exportNode)
+
+  const start = nodes.find((node) => node.type === 'start')
+  file.startNode = null
+  if (start) {
+    file.startNode = findNext(edges, start.id, 'next')
+  }
+
+  file.nodes = []
+  for (const node of nodes) {
+    if (node.type !== 'start') {
+      file.nodes.push(exportNode(node, edges))
+    }
+  }
   return file
+}
+
+// The ID of the node that an output leads to, or null when it isn't connected
+function findNext(edges, nodeId, handle) {
+  for (const edge of edges) {
+    if (edge.source === nodeId && handleOf(edge) === handle) {
+      return edge.target
+    }
+  }
+  return null
+}
+
+// One node in the shape of the exported file
+function exportNode(node, edges) {
+  const data = node.data ?? {}
+
+  switch (node.type) {
+    case 'line':
+      return {
+        id: node.id,
+        type: 'line',
+        speaker: data.speaker || null,
+        text: data.text ?? '',
+        next: findNext(edges, node.id, 'next'),
+      }
+
+    case 'choice': {
+      const responses = []
+      for (const option of data.options ?? []) {
+        responses.push({
+          id: option.id,
+          text: option.text ?? '',
+          next: findNext(edges, node.id, `option:${option.id}`),
+        })
+      }
+      return { id: node.id, type: 'choice', responses: responses }
+    }
+
+    case 'condition':
+      return {
+        id: node.id,
+        type: 'checkFlag',
+        flag: data.flag ?? '',
+        ifSet: findNext(edges, node.id, 'yes'),
+        ifNotSet: findNext(edges, node.id, 'no'),
+      }
+
+    case 'action':
+      if (data.action === 'setFlag') {
+        return {
+          id: node.id,
+          type: 'setFlag',
+          flag: data.flag ?? '',
+          value: Boolean(data.value),
+          next: findNext(edges, node.id, 'next'),
+        }
+      }
+      return {
+        id: node.id,
+        type: 'giveItem',
+        item: data.item || null,
+        // A missing or unreadable quantity counts as 1
+        quantity: Number(data.quantity) || 1,
+        next: findNext(edges, node.id, 'next'),
+      }
+
+    default:
+      return { id: node.id, type: 'end' }
+  }
 }
 
 // ---------- Validation ----------
 
-/** Name and ID checks. Returns { name?, key? }. */
-export function validateDialogueDetails({ name, key }, otherKeys) {
+/** Name and ID checks. details: { name, key }. Returns { name?, key? }. */
+export function validateDialogueDetails(details, otherKeys) {
   const errors = {}
-  if (!name.trim()) errors.name = 'Enter a name'
-  if (!key) errors.key = 'Enter an ID'
-  else if (!BLUEPRINT_ID_PATTERN.test(key)) {
+  if (!details.name.trim()) {
+    errors.name = 'Enter a name'
+  }
+  if (!details.key) {
+    errors.key = 'Enter an ID'
+  } else if (!BLUEPRINT_ID_PATTERN.test(details.key)) {
     errors.key = 'Start with a lowercase letter, then use lowercase letters, numbers or underscores'
-  } else if (otherKeys.includes(key)) {
+  } else if (otherKeys.includes(details.key)) {
     errors.key = 'Another dialogue already uses this ID'
   }
   return errors
 }
 
 /**
- * Checks the tree. Returns a list of problems: [{ id, nodeId, message }] (nodeId is null for dialogue-wide problems).
- * blueprintIds: every blueprint ID. assetKeys: { [blueprintId]: [asset keys] }.
+ * What validateDialogueGraph needs to know about the rest of the project:
+ * { blueprintIds: every blueprint ID, assetKeys: { [blueprintId]: [asset keys] } }
  */
-export function validateDialogueGraph(dialogue, { blueprintIds = [], assetKeys = {} } = {}) {
-  const { nodes, edges, speakerBlueprint, itemBlueprint } = dialogue
+export function dialogueCheckContext(blueprints, assets) {
+  const blueprintIds = []
+  for (const blueprint of blueprints) {
+    blueprintIds.push(blueprint.id)
+  }
+  return { blueprintIds: blueprintIds, assetKeys: referenceKeysFor(blueprints, assets) }
+}
+
+/**
+ * Checks the tree. Returns a list of problems: [{ id, nodeId, message }] (nodeId is null for dialogue-wide problems).
+ * context (optional): { blueprintIds: every blueprint ID, assetKeys: { [blueprintId]: [asset keys] } }
+ */
+export function validateDialogueGraph(dialogue, context = {}) {
+  const blueprintIds = context.blueprintIds ?? []
+  const assetKeys = context.assetKeys ?? {}
+  const nodes = dialogue.nodes
+  const edges = dialogue.edges
+
   const problems = []
-  const add = (node, message) => problems.push({ id: `${node?.id ?? 'dialogue'}-${problems.length}`, nodeId: node?.id ?? null, message })
-  const nodeIds = new Set(nodes.map((node) => node.id))
-  const isConnected = (node, handle) =>
-    edges.some((edge) => edge.source === node.id && (edge.sourceHandle ?? 'next') === handle && nodeIds.has(edge.target))
 
-  if (speakerBlueprint && !blueprintIds.includes(speakerBlueprint)) add(null, 'The speaker blueprint no longer exists')
-  if (itemBlueprint && !blueprintIds.includes(itemBlueprint)) add(null, 'The item blueprint no longer exists')
-  if (!nodes.some((node) => node.type === 'end')) add(null, 'Add an End so the conversation can finish')
+  // node is null for a problem with the whole dialogue
+  function addProblem(node, message) {
+    const nodeId = node?.id ?? null
+    const idPrefix = nodeId ?? 'dialogue'
+    problems.push({ id: `${idPrefix}-${problems.length}`, nodeId: nodeId, message: message })
+  }
 
-  // Which nodes can be reached by following connections from Start
+  function checkFlag(node, flag) {
+    if (!flag?.trim()) {
+      addProblem(node, 'Enter a story flag')
+    } else if (!FLAG_PATTERN.test(flag)) {
+      addProblem(node, 'Story flags start with a letter, then use letters, numbers or underscores')
+    }
+  }
+
+  function isConnected(node, handle) {
+    return isOutputConnected(nodes, edges, node.id, handle)
+  }
+
+  if (dialogue.speakerBlueprint && !blueprintIds.includes(dialogue.speakerBlueprint)) {
+    addProblem(null, 'The speaker blueprint no longer exists')
+  }
+  if (dialogue.itemBlueprint && !blueprintIds.includes(dialogue.itemBlueprint)) {
+    addProblem(null, 'The item blueprint no longer exists')
+  }
+  if (countNodes(nodes, 'end') === 0) {
+    addProblem(null, 'Add an End so the conversation can finish')
+  }
+
   const start = nodes.find((node) => node.type === 'start')
-  const reachable = new Set()
-  const queue = start ? [start.id] : []
-  while (queue.length > 0) {
-    const id = queue.shift()
-    if (reachable.has(id)) continue
-    reachable.add(id)
-    for (const edge of edges) if (edge.source === id) queue.push(edge.target)
-  }
-
-  const checkFlag = (node, flag) => {
-    if (!flag?.trim()) add(node, 'Enter a story flag')
-    else if (!FLAG_PATTERN.test(flag)) add(node, 'Story flags start with a letter, then use letters, numbers or underscores')
-  }
+  const reachableIds = findReachableIds(start, edges)
+  const speakerKeys = assetKeys[dialogue.speakerBlueprint] ?? []
+  const itemKeys = assetKeys[dialogue.itemBlueprint] ?? []
 
   for (const node of nodes) {
     const data = node.data ?? {}
+
     switch (node.type) {
       case 'start':
-        if (!isConnected(node, 'next')) add(node, 'Connect Start to the first line')
-        break
-      case 'line':
-        if (!data.text?.trim()) add(node, 'Write what is said')
-        if (data.speaker && !(assetKeys[speakerBlueprint] ?? []).includes(data.speaker)) {
-          add(node, 'That speaker no longer exists')
+        if (!isConnected(node, 'next')) {
+          addProblem(node, 'Connect Start to the first line')
         }
-        if (!isConnected(node, 'next')) add(node, 'Connect this line to what happens next')
         break
+
+      case 'line':
+        if (!data.text?.trim()) {
+          addProblem(node, 'Write what is said')
+        }
+        if (data.speaker && !speakerKeys.includes(data.speaker)) {
+          addProblem(node, 'That speaker no longer exists')
+        }
+        if (!isConnected(node, 'next')) {
+          addProblem(node, 'Connect this line to what happens next')
+        }
+        break
+
       case 'choice': {
         const options = data.options ?? []
-        if (options.length === 0) add(node, 'Add at least one response')
-        options.forEach((option, index) => {
-          if (!option.text?.trim()) add(node, `Response ${index + 1} needs text`)
-          if (!isConnected(node, `option:${option.id}`)) add(node, `Response ${index + 1} doesn't lead anywhere`)
-        })
+        if (options.length === 0) {
+          addProblem(node, 'Add at least one response')
+        }
+        for (let index = 0; index < options.length; index++) {
+          const option = options[index]
+          const number = index + 1
+          if (!option.text?.trim()) {
+            addProblem(node, `Response ${number} needs text`)
+          }
+          if (!isConnected(node, `option:${option.id}`)) {
+            addProblem(node, `Response ${number} doesn't lead anywhere`)
+          }
+        }
         break
       }
+
       case 'condition':
         checkFlag(node, data.flag)
-        if (!isConnected(node, 'yes') || !isConnected(node, 'no')) add(node, 'Connect both “If set” and “If not set”')
+        if (!isConnected(node, 'yes') || !isConnected(node, 'no')) {
+          addProblem(node, 'Connect both “If set” and “If not set”')
+        }
         break
+
       case 'action':
         if (data.action === 'setFlag') {
           checkFlag(node, data.flag)
         } else {
-          if (!data.item) add(node, 'Choose an item')
-          else if (!(assetKeys[itemBlueprint] ?? []).includes(data.item)) add(node, 'That item no longer exists')
+          if (!data.item) {
+            addProblem(node, 'Choose an item')
+          } else if (!itemKeys.includes(data.item)) {
+            addProblem(node, 'That item no longer exists')
+          }
           const quantity = Number(data.quantity)
-          if (!Number.isInteger(quantity) || quantity < 1) add(node, 'Quantity must be a whole number of 1 or more')
+          if (!Number.isInteger(quantity) || quantity < 1) {
+            addProblem(node, 'Quantity must be a whole number of 1 or more')
+          }
         }
-        if (!isConnected(node, 'next')) add(node, 'Connect this action to what happens next')
+        if (!isConnected(node, 'next')) {
+          addProblem(node, 'Connect this action to what happens next')
+        }
         break
     }
-    if (node.type !== 'start' && start && !reachable.has(node.id)) add(node, 'Nothing leads here from Start')
+
+    if (node.type !== 'start' && start && !reachableIds.includes(node.id)) {
+      addProblem(node, 'Nothing leads here from Start')
+    }
   }
 
   return problems
+}
+
+// True if this output of the node has a connection to a node that exists
+function isOutputConnected(nodes, edges, nodeId, handle) {
+  for (const edge of edges) {
+    const leavesThisOutput = edge.source === nodeId && handleOf(edge) === handle
+    const targetExists = nodes.some((node) => node.id === edge.target)
+    if (leavesThisOutput && targetExists) {
+      return true
+    }
+  }
+  return false
+}
+
+// The IDs of every node that can be reached by following connections from Start (Start included)
+function findReachableIds(start, edges) {
+  const reachable = []
+  if (!start) {
+    return reachable
+  }
+
+  // A to-do list of nodes to visit (a breadth-first search)
+  const toVisit = [start.id]
+  while (toVisit.length > 0) {
+    const id = toVisit.shift()
+    if (reachable.includes(id)) {
+      continue
+    }
+    reachable.push(id)
+    for (const edge of edges) {
+      if (edge.source === id) {
+        toVisit.push(edge.target)
+      }
+    }
+  }
+  return reachable
 }
 
 // ---------- Importing and duplicating ----------
 
 const COLUMN_WIDTH = 320
 const ROW_HEIGHT = 260
-const text = (value) => (typeof value === 'string' ? value : '')
+
+// The value if it's a string, otherwise ''
+function textOrEmpty(value) {
+  if (typeof value === 'string') {
+    return value
+  }
+  return ''
+}
 
 /**
  * Lays nodes out in columns by how many steps they are from Start (download files have no positions).
  * Nodes that can't be reached go in one extra column at the end.
  */
 function layoutGraph(nodes, edges) {
-  const depth = new Map([['start', 0]])
-  const queue = ['start']
-  while (queue.length > 0) {
-    const id = queue.shift()
+  // How many steps each reachable node is from Start: { nodeId: steps }
+  const depth = new Map()
+  depth.set('start', 0)
+  const toVisit = ['start']
+  while (toVisit.length > 0) {
+    const id = toVisit.shift()
     for (const edge of edges) {
       if (edge.source === id && !depth.has(edge.target)) {
         depth.set(edge.target, depth.get(id) + 1)
-        queue.push(edge.target)
+        toVisit.push(edge.target)
       }
     }
   }
-  const extraColumn = Math.max(0, ...depth.values()) + 1
+
+  let deepest = 0
+  for (const steps of depth.values()) {
+    if (steps > deepest) {
+      deepest = steps
+    }
+  }
+  const extraColumn = deepest + 1
+
+  // How many nodes are already in each column
   const rowsUsed = new Map()
-  return nodes.map((node) => {
+  const placed = []
+  for (const node of nodes) {
     const column = depth.get(node.id) ?? extraColumn
     const row = rowsUsed.get(column) ?? 0
     rowsUsed.set(column, row + 1)
-    return { ...node, position: { x: column * COLUMN_WIDTH, y: row * ROW_HEIGHT } }
-  })
+    placed.push({ ...node, position: { x: column * COLUMN_WIDTH, y: row * ROW_HEIGHT } })
+  }
+  return placed
 }
 
 const FILE_NODE_TYPES = ['line', 'choice', 'checkFlag', 'giveItem', 'setFlag', 'end']
@@ -316,6 +530,7 @@ export function parseDialogueFile(fileText) {
   } catch {
     return { error: "This file couldn't be read as a dialogue." }
   }
+
   if (Array.isArray(file)) {
     return { error: 'This file holds several dialogues. Import them one at a time, or restore a full backup in Settings.' }
   }
@@ -323,85 +538,107 @@ export function parseDialogueFile(fileText) {
     return { error: "This file isn't a GameAtlas dialogue." }
   }
 
-  const ids = new Set()
+  // Every step needs a known type and its own ID
+  const ids = []
   for (const fileNode of file.nodes) {
     if (!fileNode || typeof fileNode.id !== 'string' || !FILE_NODE_TYPES.includes(fileNode.type)) {
       return { error: `This dialogue has a step GameAtlas doesn't know: "${fileNode?.type}".` }
     }
-    if (ids.has(fileNode.id) || fileNode.id === 'start') return { error: `Two steps share the ID "${fileNode.id}".` }
-    ids.add(fileNode.id)
+    if (ids.includes(fileNode.id) || fileNode.id === 'start') {
+      return { error: `Two steps share the ID "${fileNode.id}".` }
+    }
+    ids.push(fileNode.id)
   }
 
   const nodes = [{ id: 'start', type: 'start', data: {} }]
   const edges = []
+
   // Only connect to steps that exist; anything else stays unconnected and shows up in the checks
-  const connect = (source, sourceHandle, target) => {
-    if (typeof target === 'string' && ids.has(target)) {
-      edges.push({ id: edgeId(source, sourceHandle, target), source, sourceHandle, target })
+  function connect(source, sourceHandle, target) {
+    if (typeof target === 'string' && ids.includes(target)) {
+      edges.push({ id: edgeId(source, sourceHandle, target), source: source, sourceHandle: sourceHandle, target: target })
     }
   }
+
   connect('start', 'next', file.startNode)
 
   for (const fileNode of file.nodes) {
-    const { id } = fileNode
+    const id = fileNode.id
+
     switch (fileNode.type) {
       case 'line':
-        nodes.push({ id, type: 'line', data: { speaker: text(fileNode.speaker), text: text(fileNode.text) } })
+        nodes.push({ id: id, type: 'line', data: { speaker: textOrEmpty(fileNode.speaker), text: textOrEmpty(fileNode.text) } })
         connect(id, 'next', fileNode.next)
         break
+
       case 'choice': {
-        const responses = Array.isArray(fileNode.responses) ? fileNode.responses : []
-        const options = responses.map((response, index) => ({
-          id: typeof response?.id === 'string' && response.id ? response.id : `response_${index + 1}`,
-          text: text(response?.text),
-        }))
-        nodes.push({ id, type: 'choice', data: { options } })
-        options.forEach((option, index) => connect(id, `option:${option.id}`, responses[index]?.next))
+        let responses = []
+        if (Array.isArray(fileNode.responses)) {
+          responses = fileNode.responses
+        }
+        const options = []
+        for (let index = 0; index < responses.length; index++) {
+          const response = responses[index]
+          // Responses without an ID get one from their position
+          let responseId = `response_${index + 1}`
+          if (typeof response?.id === 'string' && response.id) {
+            responseId = response.id
+          }
+          options.push({ id: responseId, text: textOrEmpty(response?.text) })
+        }
+        nodes.push({ id: id, type: 'choice', data: { options: options } })
+        for (let index = 0; index < options.length; index++) {
+          connect(id, `option:${options[index].id}`, responses[index]?.next)
+        }
         break
       }
+
       case 'checkFlag':
-        nodes.push({ id, type: 'condition', data: { flag: text(fileNode.flag) } })
+        nodes.push({ id: id, type: 'condition', data: { flag: textOrEmpty(fileNode.flag) } })
         connect(id, 'yes', fileNode.ifSet)
         connect(id, 'no', fileNode.ifNotSet)
         break
-      case 'giveItem':
+
+      case 'giveItem': {
+        let quantity = 1
+        if (Number.isInteger(fileNode.quantity)) {
+          quantity = fileNode.quantity
+        }
         nodes.push({
-          id,
+          id: id,
           type: 'action',
-          data: {
-            action: 'giveItem',
-            item: text(fileNode.item),
-            quantity: Number.isInteger(fileNode.quantity) ? fileNode.quantity : 1,
-            flag: '',
-            value: true,
-          },
+          data: { action: 'giveItem', item: textOrEmpty(fileNode.item), quantity: quantity, flag: '', value: true },
         })
         connect(id, 'next', fileNode.next)
         break
+      }
+
       case 'setFlag':
         nodes.push({
-          id,
+          id: id,
           type: 'action',
-          data: { action: 'setFlag', item: '', quantity: 1, flag: text(fileNode.flag), value: fileNode.value !== false },
+          // Only an explicit false turns the flag off
+          data: { action: 'setFlag', item: '', quantity: 1, flag: textOrEmpty(fileNode.flag), value: fileNode.value !== false },
         })
         connect(id, 'next', fileNode.next)
         break
+
       default:
-        nodes.push({ id, type: 'end', data: {} })
+        nodes.push({ id: id, type: 'end', data: {} })
     }
   }
 
   return {
     imported: {
       details: {
-        name: text(file.name),
-        key: text(file.id),
-        description: text(file.description),
-        speakerBlueprint: text(file.speakerBlueprint),
-        itemBlueprint: text(file.itemBlueprint),
+        name: textOrEmpty(file.name),
+        key: textOrEmpty(file.id),
+        description: textOrEmpty(file.description),
+        speakerBlueprint: textOrEmpty(file.speakerBlueprint),
+        itemBlueprint: textOrEmpty(file.itemBlueprint),
       },
       nodes: layoutGraph(nodes, edges),
-      edges,
+      edges: edges,
     },
   }
 }
@@ -412,11 +649,17 @@ export function parseDialogueFile(fileText) {
  */
 export function duplicateDialogueState(dialogue, existingKeys) {
   const name = `${dialogue.name} (copy)`
+
+  let baseKey = toSnakeCase(name)
+  if (!baseKey) {
+    baseKey = `${dialogue.key}_copy`
+  }
+
   return {
     imported: {
       details: {
-        name,
-        key: uniqueKey(toSnakeCase(name) || `${dialogue.key}_copy`, existingKeys),
+        name: name,
+        key: uniqueKey(baseKey, existingKeys),
         description: dialogue.description ?? '',
         speakerBlueprint: dialogue.speakerBlueprint ?? '',
         itemBlueprint: dialogue.itemBlueprint ?? '',
@@ -436,24 +679,44 @@ export function duplicateDialogueState(dialogue, existingKeys) {
  * Both the rename and the "is it used?" check go through here so they can't drift apart.
  */
 function assetLinkIn(node, dialogue, blueprintId, key) {
-  if (node.type === 'line' && dialogue.speakerBlueprint === blueprintId && node.data.speaker === key) return 'speaker'
-  if (node.type === 'action' && dialogue.itemBlueprint === blueprintId && node.data.item === key) return 'item'
+  if (node.type === 'line' && dialogue.speakerBlueprint === blueprintId && node.data.speaker === key) {
+    return 'speaker'
+  }
+  if (node.type === 'action' && dialogue.itemBlueprint === blueprintId && node.data.item === key) {
+    return 'item'
+  }
   return null
 }
 
 /** Does this dialogue use the asset, as a speaker or as a given item? */
 export function dialogueLinksToAsset(dialogue, blueprintId, key) {
-  return dialogue.nodes.some((node) => assetLinkIn(node, dialogue, blueprintId, key) !== null)
+  for (const node of dialogue.nodes) {
+    if (assetLinkIn(node, dialogue, blueprintId, key) !== null) {
+      return true
+    }
+  }
+  return false
 }
 
 /** A copy of the dialogue with links to a renamed asset updated, or null if nothing linked to it. */
 export function renameAssetInDialogue(dialogue, blueprintId, fromKey, toKey) {
   let changed = false
-  const nodes = dialogue.nodes.map((node) => {
-    const field = assetLinkIn(node, dialogue, blueprintId, fromKey)
-    if (!field) return node
+  const nodes = []
+
+  for (const node of dialogue.nodes) {
+    const linkField = assetLinkIn(node, dialogue, blueprintId, fromKey)
+    if (!linkField) {
+      nodes.push(node)
+      continue
+    }
     changed = true
-    return { ...node, data: { ...node.data, [field]: toKey } }
-  })
-  return changed ? { ...dialogue, nodes } : null
+    // A copy of the node whose speaker (or item) is the new key
+    const data = { ...node.data, [linkField]: toKey }
+    nodes.push({ ...node, data: data })
+  }
+
+  if (!changed) {
+    return null
+  }
+  return { ...dialogue, nodes: nodes }
 }

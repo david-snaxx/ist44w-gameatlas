@@ -79,7 +79,9 @@ tools, and the hand-written `[Serializable]` class that normally sits between th
 7. **Simple code over polish** (2026-09-23 and 24). The owner is learning React, so the code has to stay easy to
    read. That means no accessibility layer (no `aria-*`, roles, focus management or keyboard handlers), no
    animations, the browser's own controls (`<select>`, checkbox, `<dialog>`) instead of custom widgets, and no
-   props or CSS for small visual tweaks. See STYLE-GUIDELINES §8, §12 and §13.
+   props or CSS for small visual tweaks. See STYLE-GUIDELINES §8, §12 and §13. Code also favors plain statements
+   (`if`, `for` loops, named variables) and small named components over dense one-line expressions, even when
+   that means more lines.
 
 ---
 
@@ -131,7 +133,7 @@ gameatlas/
 │       ├── schema/        # ✔ Field-type registry, validation, blueprint drafts, blueprintStore (localStorage until Phase 2)
 │       ├── data/          # ✔ Assets and dialogues: stores (localStorage until Phase 2), data ↔ form values, dialogue graph model, export/import
 │       ├── pages/         # ✔ Route-level screens: Blueprints (list + builder), Dashboard (home), Settings, Assets (browser + view + editor), Dialogues (list + tree editor), NotFound
-│       ├── utils/         # ✔ Small helpers (cx)
+│       ├── utils/         # ✔ Small helpers (downloads, dates, plurals, unsaved-changes guard)
 │       ├── unity/         # (Phase 5) C# code generation: type mapping + templates (pure functions, no UI)
 │       └── api/           # (Phase 2) fetch wrappers for the REST API
 ├── backend/               # (Phase 2) Spring Boot project from start.spring.io
@@ -663,6 +665,7 @@ Add new entries at the bottom. Format: `date · decision · why`.
 - 2026-09-24 · **Native form controls:** `Select` is now the browser's `<select>` (reference dropdowns lose their search box and the grey IDs next to names), and the `Toggle` switch became `Checkbox`, a plain checkbox · User decision. Removes the largest custom widget (a portal, positioning and close-on-scroll logic) and its CSS.
 - 2026-09-24 · **Style showcase deleted** (`/dev/styles`, the sidebar's Developer section and the dashboard footnote) · User decision; the real pages are now the reference, so it was about 1,100 lines of upkeep.
 - 2026-09-24 · **`base.css` is one block per component**, replacing the shared "shape groups" (all flex rows in one rule, all gaps in another) from the 2026-09-17 entry · User decision. Everything that styles a component is now in one place, at the cost of repeating a few `display`/`gap` lines. Page-only classes that had become tweaks were dropped (`.flush`, `.canvas`, `.missing`, `.empty-box`, `.stack-start`, `.toolbar-filter`, `.option-list`); the dialogue canvas now uses React Flow's own dark theme apart from edge colors, and the unused `--color-node-*`, canvas, `--color-border-strong` and motion tokens were removed.
+- 2026-09-24 · **Readable over compact code:** logic moves out of JSX into plain statements (`if`/`else`, `for…of`, named variables) and small named components; no nested ternaries, `&&` chains, chained array methods or `.map()` inside `.map()` · User request: the owner reads Java/C# comfortably but found the dense lambdas, ternaries and nesting overwhelming. Applied to `AppSidebar` first as the reference, then to the whole frontend the same day: every component, page and logic module in `src/schema`, `src/data` and `src/utils`. The `cx` class-name helper was removed (class names are built with `if`), repeated blocks became small named components (e.g. `MissingAsset`, `SettingRow`, one component per property type in `TypeSettings`), and two shared helpers were added (`onlyTouchedErrors` in `validation.js`, `dialogueCheckContext` in `dialogueGraph.js`). A comparison script ran 265 cases through the old and new logic modules and got identical results. The rules are in CLAUDE.md.
 
 ---
 

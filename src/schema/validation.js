@@ -3,8 +3,13 @@ import { FIELD_TYPES, TYPE_SETTINGS, VECTOR_AXES } from './fieldTypes.js'
 export const BLUEPRINT_ID_PATTERN = /^[a-z][a-z0-9_]*$/
 export const PROPERTY_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/
 
-const isEmpty = (value) => value === undefined || value === null || value === ''
-const isNumber = (value) => typeof value === 'number' && Number.isFinite(value)
+function isEmpty(value) {
+  return value === undefined || value === null || value === ''
+}
+
+function isNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value)
+}
 
 // ---------- Asset values: what people type into a form ----------
 
@@ -16,12 +21,21 @@ function validateValue(field, value, referenceKeys) {
   switch (field.type) {
     case 'string':
     case 'text':
-      if (isEmpty(value)) return field.required ? 'Enter a value' : null
-      if (field.maxLength && value.length > field.maxLength) return `Use ${field.maxLength} characters or fewer`
+      if (isEmpty(value)) {
+        if (field.required) return 'Enter a value'
+        return null
+      }
+      if (field.maxLength && value.length > field.maxLength) {
+        return `Use ${field.maxLength} characters or fewer`
+      }
       return null
+
     case 'int':
     case 'float': {
-      if (isEmpty(value)) return field.required ? 'Enter a number' : null
+      if (isEmpty(value)) {
+        if (field.required) return 'Enter a number'
+        return null
+      }
       const number = Number(value)
       if (!Number.isFinite(number)) return 'Enter a number'
       if (field.type === 'int' && !Number.isInteger(number)) return 'Use a whole number'
@@ -29,21 +43,38 @@ function validateValue(field, value, referenceKeys) {
       if (isNumber(field.max) && number > field.max) return `Must be ${field.max} or less`
       return null
     }
-    case 'enum':
-      if (isEmpty(value)) return field.required ? 'Choose an option' : null
-      return (field.options ?? []).includes(value) ? null : 'Choose one of the listed options'
+
+    case 'enum': {
+      if (isEmpty(value)) {
+        if (field.required) return 'Choose an option'
+        return null
+      }
+      const options = field.options ?? []
+      if (!options.includes(value)) return 'Choose one of the listed options'
+      return null
+    }
+
     case 'reference':
-      if (isEmpty(value)) return field.required ? 'Choose an asset' : null
-      if (referenceKeys && !(referenceKeys[field.targetSchema] ?? []).includes(value)) {
-        return 'That asset no longer exists'
+      if (isEmpty(value)) {
+        if (field.required) return 'Choose an asset'
+        return null
+      }
+      if (referenceKeys) {
+        const existingKeys = referenceKeys[field.targetSchema] ?? []
+        if (!existingKeys.includes(value)) return 'That asset no longer exists'
       }
       return null
+
     case 'vector2':
-    case 'vector3': {
-      const axes = VECTOR_AXES[field.type]
-      const invalid = axes.some((axis) => isEmpty(value?.[axis]) || !Number.isFinite(Number(value[axis])))
-      return invalid ? 'Enter a number for every axis' : null
-    }
+    case 'vector3':
+      for (const axis of VECTOR_AXES[field.type]) {
+        const axisValue = value?.[axis]
+        if (isEmpty(axisValue) || !Number.isFinite(Number(axisValue))) {
+          return 'Enter a number for every axis'
+        }
+      }
+      return null
+
     default:
       return null
   }
@@ -56,52 +87,126 @@ function validateValue(field, value, referenceKeys) {
  */
 export function validateValues(fields, values = {}, prefix = '', referenceKeys) {
   const errors = {}
+
   for (const field of fields) {
-    if (!field.key) continue
-    const path = prefix ? `${prefix}.${field.key}` : field.key
+    if (!field.key) {
+      continue
+    }
+
+    let path = field.key
+    if (prefix) {
+      path = `${prefix}.${field.key}`
+    }
     const value = values[field.key]
 
     if (field.type === 'object') {
-      Object.assign(errors, validateValues(field.fields ?? [], value ?? {}, path, referenceKeys))
+      const groupErrors = validateValues(field.fields ?? [], value ?? {}, path, referenceKeys)
+      // Copy every error found inside the group into `errors`
+      Object.assign(errors, groupErrors)
     } else if (field.type === 'list') {
-      const items = Array.isArray(value) ? value : []
-      if (field.required && items.length === 0) errors[path] = 'Add at least one item'
-      items.forEach((item, index) => {
-        // Every item in a list needs a value
-        const message = validateValue({ ...field.itemType, required: true }, item, referenceKeys)
-        if (message) errors[`${path}.${index}`] = message
-      })
+      let items = []
+      if (Array.isArray(value)) {
+        items = value
+      }
+      if (field.required && items.length === 0) {
+        errors[path] = 'Add at least one item'
+      }
+      // Every item in a list needs a value, so check each one as a required property.
+      // `{ ...field.itemType, required: true }` is a copy of the item type with `required` set.
+      const itemField = { ...field.itemType, required: true }
+      for (let index = 0; index < items.length; index++) {
+        const message = validateValue(itemField, items[index], referenceKeys)
+        if (message) {
+          errors[`${path}.${index}`] = message
+        }
+      }
     } else {
       const message = validateValue(field, value, referenceKeys)
-      if (message) errors[path] = message
+      if (message) {
+        errors[path] = message
+      }
     }
   }
+
   return errors
 }
 
+/**
+ * Keeps only the errors for inputs the user has changed, so a new form doesn't open covered in red.
+ * An error also counts when it's inside a group or list the user changed ("stats" covers "stats.strength").
+ */
+export function onlyTouchedErrors(errors, touchedPaths) {
+  const shown = {}
+  for (const path of Object.keys(errors)) {
+    for (const touched of touchedPaths) {
+      if (path === touched || path.startsWith(`${touched}.`)) {
+        shown[path] = errors[path]
+        break
+      }
+    }
+  }
+  return shown
+}
+
 // ---------- Blueprint definitions: what the builder edits ----------
+
+// True if another property in `siblings` already uses this property's ID
+function isKeyTaken(field, siblings) {
+  for (const sibling of siblings) {
+    if (sibling.uid !== field.uid && sibling.key === field.key) {
+      return true
+    }
+  }
+  return false
+}
+
+function hasBlankText(texts) {
+  for (const text of texts) {
+    if (!text.trim()) {
+      return true
+    }
+  }
+  return false
+}
+
+function hasRepeats(values) {
+  const seen = []
+  for (const value of values) {
+    if (seen.includes(value)) {
+      return true
+    }
+    seen.push(value)
+  }
+  return false
+}
 
 /**
  * Checks one property's own settings. Returns { [setting]: message }.
  * A list's item settings are reported as "itemType.<setting>".
  *
- * siblings: the properties at the same level (IDs must be unique among them)
- * blueprintIds: every blueprint a link could point to
- * isItemType: true when checking a list's item type (it has no label or ID)
- * checkChildren: false while a new group is being created (its properties are added afterwards)
+ * options (all optional):
+ *   siblings: the properties at the same level (IDs must be unique among them)
+ *   blueprintIds: every blueprint a link could point to
+ *   isItemType: true when checking a list's item type (it has no label or ID)
+ *   checkChildren: false while a new group is being created (its properties are added afterwards)
  */
-export function validateFieldDefinition(
-  field,
-  { siblings = [], blueprintIds = [], isItemType = false, checkChildren = true } = {},
-) {
+export function validateFieldDefinition(field, options = {}) {
+  const siblings = options.siblings ?? []
+  const blueprintIds = options.blueprintIds ?? []
+  const isItemType = options.isItemType ?? false
+  const checkChildren = options.checkChildren ?? true
+
   const errors = {}
 
   if (!isItemType) {
-    if (!field.label?.trim()) errors.label = 'Enter a label'
-    if (!field.key) errors.key = 'Enter an ID'
-    else if (!PROPERTY_KEY_PATTERN.test(field.key)) {
+    if (!field.label?.trim()) {
+      errors.label = 'Enter a label'
+    }
+    if (!field.key) {
+      errors.key = 'Enter an ID'
+    } else if (!PROPERTY_KEY_PATTERN.test(field.key)) {
       errors.key = 'Start with a letter, then use letters, numbers or underscores'
-    } else if (siblings.some((sibling) => sibling.uid !== field.uid && sibling.key === field.key)) {
+    } else if (isKeyTaken(field, siblings)) {
       errors.key = 'Another property at this level already uses this ID'
     }
   }
@@ -114,48 +219,79 @@ export function validateFieldDefinition(
   switch (field.type) {
     case 'string':
     case 'text':
-      if (field.maxLength !== undefined && (!Number.isInteger(field.maxLength) || field.maxLength < 1)) {
-        errors.maxLength = 'Use a whole number of 1 or more'
+      if (field.maxLength !== undefined) {
+        const isWholeNumber = Number.isInteger(field.maxLength)
+        if (!isWholeNumber || field.maxLength < 1) {
+          errors.maxLength = 'Use a whole number of 1 or more'
+        }
       }
       break
+
     case 'int':
     case 'float':
       for (const setting of ['min', 'max']) {
         const value = field[setting]
-        if (value === undefined) continue
-        if (!isNumber(value)) errors[setting] = 'Enter a number'
-        else if (field.type === 'int' && !Number.isInteger(value)) errors[setting] = 'Use a whole number'
+        if (value === undefined) {
+          continue
+        }
+        if (!isNumber(value)) {
+          errors[setting] = 'Enter a number'
+        } else if (field.type === 'int' && !Number.isInteger(value)) {
+          errors[setting] = 'Use a whole number'
+        }
       }
-      if (!errors.min && !errors.max && isNumber(field.min) && isNumber(field.max) && field.min > field.max) {
-        errors.max = 'Must be at least the minimum'
+      // Only compare the two limits when both are valid numbers
+      if (!errors.min && !errors.max && isNumber(field.min) && isNumber(field.max)) {
+        if (field.min > field.max) {
+          errors.max = 'Must be at least the minimum'
+        }
       }
       break
+
     case 'enum': {
-      const options = field.options ?? []
-      if (options.length === 0) errors.options = 'Add at least one option'
-      else if (options.some((option) => !option.trim())) errors.options = "Options can't be empty"
-      else if (new Set(options).size !== options.length) errors.options = 'Each option must be different'
+      const enumOptions = field.options ?? []
+      if (enumOptions.length === 0) {
+        errors.options = 'Add at least one option'
+      } else if (hasBlankText(enumOptions)) {
+        errors.options = "Options can't be empty"
+      } else if (hasRepeats(enumOptions)) {
+        errors.options = 'Each option must be different'
+      }
       break
     }
+
     case 'reference':
-      if (!field.targetSchema) errors.targetSchema = 'Choose a blueprint'
-      else if (!blueprintIds.includes(field.targetSchema)) errors.targetSchema = 'That blueprint no longer exists'
+      if (!field.targetSchema) {
+        errors.targetSchema = 'Choose a blueprint'
+      } else if (!blueprintIds.includes(field.targetSchema)) {
+        errors.targetSchema = 'That blueprint no longer exists'
+      }
       break
+
     case 'list': {
-      const itemErrors = validateFieldDefinition(field.itemType ?? {}, { isItemType: true, blueprintIds })
-      for (const [setting, message] of Object.entries(itemErrors)) errors[`itemType.${setting}`] = message
+      const itemErrors = validateFieldDefinition(field.itemType ?? {}, { isItemType: true, blueprintIds: blueprintIds })
+      for (const setting of Object.keys(itemErrors)) {
+        errors[`itemType.${setting}`] = itemErrors[setting]
+      }
       break
     }
+
     case 'object':
-      if (checkChildren && !field.fields?.length) errors.fields = 'Add at least one property to this group'
+      if (checkChildren && !field.fields?.length) {
+        errors.fields = 'Add at least one property to this group'
+      }
       break
   }
 
-  // A default value has to follow the property's own rules
+  // A default value has to follow the property's own rules (but only once those rules are valid)
+  const hasDefaultSetting = TYPE_SETTINGS[field.type].includes('default')
   const settingsValid = !errors.options && !errors.min && !errors.max && !errors.maxLength
-  if (!isItemType && TYPE_SETTINGS[field.type].includes('default') && !isEmpty(field.default) && settingsValid) {
-    const message = validateValue({ ...field, required: false }, field.default)
-    if (message) errors.default = message
+  if (!isItemType && hasDefaultSetting && !isEmpty(field.default) && settingsValid) {
+    const optionalField = { ...field, required: false }
+    const message = validateValue(optionalField, field.default)
+    if (message) {
+      errors.default = message
+    }
   }
 
   return errors
@@ -165,47 +301,72 @@ export function validateFieldDefinition(
  * Checks a whole blueprint draft. Returns an object keyed by property `uid`
  * (each holding that property's errors), plus `blueprint` for the name, ID and "no properties" errors.
  *
- * otherIds: IDs of the other saved blueprints (a blueprint's ID must be unique)
- * blueprintIds: every blueprint a link could point to, including this one
+ * options (all optional):
+ *   otherIds: IDs of the other saved blueprints (a blueprint's ID must be unique)
+ *   blueprintIds: every blueprint a link could point to, including this one
  */
-export function validateBlueprint(draft, { otherIds = [], blueprintIds = [] } = {}) {
+export function validateBlueprint(draft, options = {}) {
+  const otherIds = options.otherIds ?? []
+  const blueprintIds = options.blueprintIds ?? []
+
   const errors = {}
 
   const general = {}
-  if (!draft.name.trim()) general.name = 'Enter a name'
-  if (!draft.id) general.id = 'Enter an ID'
-  else if (!BLUEPRINT_ID_PATTERN.test(draft.id)) {
+  if (!draft.name.trim()) {
+    general.name = 'Enter a name'
+  }
+  if (!draft.id) {
+    general.id = 'Enter an ID'
+  } else if (!BLUEPRINT_ID_PATTERN.test(draft.id)) {
     general.id = 'Start with a lowercase letter, then use lowercase letters, numbers or underscores'
   } else if (otherIds.includes(draft.id)) {
     general.id = 'Another blueprint already uses this ID'
   }
-  if (draft.fields.length === 0) general.fields = 'Add at least one property'
-  if (Object.keys(general).length > 0) errors.blueprint = general
+  if (draft.fields.length === 0) {
+    general.fields = 'Add at least one property'
+  }
+  if (Object.keys(general).length > 0) {
+    errors.blueprint = general
+  }
 
-  function checkFields(fields) {
-    for (const field of fields) {
-      const fieldErrors = validateFieldDefinition(field, { siblings: fields, blueprintIds })
-      if (Object.keys(fieldErrors).length > 0) errors[field.uid] = fieldErrors
-      if (field.type === 'object') checkFields(field.fields ?? [])
+  checkFieldsInto(errors, draft.fields, blueprintIds)
+  return errors
+}
+
+// Checks every property (including those inside groups) and stores each one's errors under its uid
+function checkFieldsInto(errors, fields, blueprintIds) {
+  for (const field of fields) {
+    const fieldErrors = validateFieldDefinition(field, { siblings: fields, blueprintIds: blueprintIds })
+    if (Object.keys(fieldErrors).length > 0) {
+      errors[field.uid] = fieldErrors
+    }
+    if (field.type === 'object') {
+      checkFieldsInto(errors, field.fields ?? [], blueprintIds)
     }
   }
-  checkFields(draft.fields)
-
-  return errors
 }
 
 /** Checks an asset's ID: required, lowercase snake_case, and unique among its blueprint's assets. */
 export function validateAssetKey(key, blueprintAssets, currentAssetId) {
-  if (!key) return 'Enter an ID'
+  if (!key) {
+    return 'Enter an ID'
+  }
   if (!BLUEPRINT_ID_PATTERN.test(key)) {
     return 'Start with a lowercase letter, then use lowercase letters, numbers or underscores'
   }
-  if (blueprintAssets.some((asset) => asset.key === key && asset.id !== currentAssetId)) {
-    return 'Another asset of this blueprint already uses this ID'
+  for (const asset of blueprintAssets) {
+    if (asset.key === key && asset.id !== currentAssetId) {
+      return 'Another asset of this blueprint already uses this ID'
+    }
   }
   return null
 }
 
+/** The total number of problems in the result of validateBlueprint. */
 export function countProblems(errors) {
-  return Object.values(errors).reduce((total, group) => total + Object.keys(group).length, 0)
+  let total = 0
+  for (const group of Object.values(errors)) {
+    total += Object.keys(group).length
+  }
+  return total
 }

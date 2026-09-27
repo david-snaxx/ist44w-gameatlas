@@ -11,11 +11,7 @@ import { useBlueprints } from '../../schema/useBlueprints.js'
 const COLUMNS = [
   { key: 'name', label: 'Name' },
   { key: 'id', label: 'ID' },
-  {
-    key: 'description',
-    label: 'Description',
-    render: (row) => row.description || '—',
-  },
+  { key: 'description', label: 'Description' },
   { key: 'properties', label: 'Properties' },
   { key: 'assets', label: 'Assets' },
   { key: 'version', label: 'Version' },
@@ -27,18 +23,29 @@ function BlueprintListPage() {
   const assets = useAssets()
   const navigate = useNavigate()
 
-  const rows = blueprints.map((blueprint) => ({
-    id: blueprint.id,
-    name: blueprint.name,
-    description: blueprint.description ?? '',
-    properties: countProperties(blueprint.fields),
-    assets: assets.filter((asset) => asset.schemaId === blueprint.id).length,
-    version: blueprint.version,
-  }))
+  const rows = []
+  for (const blueprint of blueprints) {
+    let assetCount = 0
+    for (const asset of assets) {
+      if (asset.schemaId === blueprint.id) {
+        assetCount++
+      }
+    }
 
-  const newBlueprint = () => navigate('/blueprints/new')
+    rows.push({
+      id: blueprint.id,
+      name: blueprint.name,
+      // A dash stands in for an empty description
+      description: blueprint.description || '—',
+      properties: countProperties(blueprint.fields),
+      assets: assetCount,
+      version: blueprint.version,
+    })
+  }
+
+  // The same button appears in the header and in the empty state
   const newButton = (
-    <Button variant="primary" icon={Plus} onClick={newBlueprint}>
+    <Button variant="primary" icon={Plus} onClick={() => navigate('/blueprints/new')}>
       New blueprint
     </Button>
   )
@@ -49,9 +56,7 @@ function BlueprintListPage() {
       intro="A blueprint lists the properties every asset of one kind has, like the fields of a class. Asset forms are built from blueprints."
       noun="blueprint"
       crumbs={[{ label: 'Blueprints' }]}
-      topBarActions={
-        <TopBarActions noun="blueprint" newPath="/blueprints/new" importFile={parseBlueprintFile} />
-      }
+      topBarActions={<TopBarActions noun="blueprint" newPath="/blueprints/new" importFile={parseBlueprintFile} />}
       actions={newButton}
       columns={COLUMNS}
       rows={rows}
