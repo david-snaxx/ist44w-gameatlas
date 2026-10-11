@@ -1,0 +1,22 @@
+{
+  // Node runs the .ts files directly (it strips the types out), so tsc never builds anything.
+  // It only checks the types: `npm run typecheck`.
+  "compilerOptions": {
+    "noEmit": true,
+    "target": "esnext",
+    "module": "nodenext",
+    "types": ["node"],
+    "strict": true,
+    "skipLibCheck": true,
+
+    // Keep the code runnable by Node's type stripping: imports name the real file (`./db.ts`),
+    // type-only imports say `import type`, and no syntax that needs compiling (enums, namespaces).
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+
+    // Lets the backend import the frontend's plain .js modules (validation, field types) and use their types.
+    "allowJs": true
+  },
+  "include": ["src"]
+}
