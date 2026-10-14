@@ -3,7 +3,7 @@
 > **This is the authoritative design system for GameAtlas.** Humans and AI assistants follow it for all UI work.
 > It was derived from the filled-in questionnaire in [`STYLE-GUIDE.md`](STYLE-GUIDE.md) on 2026-09-14, and
 > **simplified on 2026-09-23 and 24**: no accessibility layer (§12), no motion (§8), the browser's own form controls
-> (§7.3), and one CSS block per component (§13). Every value lives in one token file (`src/styles/tokens.css`),
+> (§7.3), and one CSS block per component (§13). Every value lives in one token file (`frontend/src/styles/tokens.css`),
 > so changes there apply app-wide. Resolved interpretations and still-open questions are in
 > [§14](#14-decisions--open-questions). Items marked **(planned)** are described here but not built yet.
 
@@ -300,7 +300,7 @@ Plain text and one button, centered in the section: a muted line ("No assets yet
 Styled text "GameAtlas" in the Silkscreen font, `--color-text`, in the top-left of the frame above the sidebar (`.shell-brand` in `AppShell`). It will be replaced by a real logo later.
 
 ### 7.10 Component inventory
-**Reuse or extend these before creating anything new.** All live in `src/components/`.
+**Reuse or extend these before creating anything new.** All live in `frontend/src/components/`.
 
 | Component | Purpose and props |
 |---|---|
@@ -400,6 +400,57 @@ The first real page (`pages/Blueprints/`) sets the pattern for editor pages:
 
 ---
 
+### 7.16 Page pattern: logging in and signing up
+
+The two pages people see before they have a session (`/login` and `/signup`, in `pages/Login/`). They are the
+only pages **outside `AppShell`**: there is nothing to navigate to yet, so there is no sidebar, top bar or
+status bar — just one centred column on an empty screen, over the usual background glows.
+
+- **`SignedOutLayout`** is the frame both share: the **GameAtlas wordmark** in the Silkscreen pixel font, a
+  muted line saying what the page is for, then the page's own fields and buttons.
+- The column is **320px wide and a size container**, which is what makes `PropertyRow` put its labels above
+  the inputs rather than beside them. Nothing special is needed per field.
+- Both pages are a real `<form>`, so Enter submits, and the primary button is `type="submit"`.
+- **Two buttons of equal width, side by side**, in a 1fr 1fr grid: the action (primary) on the left and the
+  way to the other page (secondary) on the right.
+- **Both kinds of message are shown.** What the person can see for themselves is checked before anything is
+  sent and appears under its own box as a `field-error` ("Enter your email", "Use at least 8 characters").
+  What only the server knows comes back as an **error toast** in the server's own words ("Wrong email or
+  password", "That email is already registered"), which stays until dismissed.
+- The client-side rules are copies of the backend's (`validatePassword` and `validateDisplayName` in
+  `routes/users.ts`), kept only so the answer is instant. The backend is still the one that decides.
+- Signing up does **not** log anyone in, because `POST /api/users` starts no session. On success the person is
+  sent to `/login` with the email already filled in, through navigation state.
+
+### 7.17 Page pattern: the account page
+
+`pages/Account/`, at `/account`. A proof of concept: it shows every field the API sends for the logged-in
+user and nothing else, which is enough to see that the session cookie is reaching the backend.
+
+- Inside `AppShell` like every other page, with one `Section` of label-and-value rows. The rows reuse the
+  asset view's classes (`value-row`, `muted`, `value`), so it needs no styling of its own.
+- It shows `displayName`, `email`, `id`, `createdAt` and `projectIds`. `passwordHash` is the one field of the
+  `User` type that never appears, because the API never sends it.
+- Three states: *checking* while the server is being asked, the details once it answers, and an `EmptyState`
+  pointing at `/login` when nobody is logged in.
+
+**Who is logged in, in the sidebar.** The foot of `AppSidebar` shows the person's display name, leading here,
+with **Log out** underneath it; when nobody is logged in it offers "Log in" instead, and while the server is
+still being asked it shows nothing at all, so it never says the wrong thing first. `.nav-foot` has
+`margin-top: auto`, which pushes it under whatever space is left.
+
+Log out is a `<button>` wearing the same `nav-item` class as the links beside it, so the two match exactly;
+that class carries the button resets (`background: none`, `border: none`, `text-align: left`) for the purpose.
+It calls `POST /api/users/logout`, then `clearCurrentUser()` so every open page updates at once, and goes to
+`/login`.
+
+**Where the answer comes from.** `useCurrentUser()` (in `src/api/`) reads a small store that asks
+`GET /api/users/me` **once per page load**. The sidebar is rebuilt on every page, so asking each time would be
+a round trip per click for an answer that hasn't changed. The login page calls `setCurrentUser()` with the
+user it already has, so the name appears without a second request.
+
+---
+
 ## 8. Motion
 
 **None** (decision of 2026-09-23). There are no transitions or animations: hover and state changes are
@@ -451,7 +502,7 @@ Use sentence case everywhere: "New blueprint", "Add property", not "New Blueprin
 
 Property types are shown as: **Short text**, **Long text**, **Whole number**, **Decimal number**, **On / off**,
 **Choice list**, **Vector 2**, **Vector 3**, **Link to asset**, **List** and **Group**, each with a one-line
-description (defined in `src/schema/fieldTypes.js`). The exported JSON is called the **blueprint file**.
+description (defined in `frontend/src/schema/fieldTypes.js`). The exported JSON is called the **blueprint file**.
 
 ### 11.2 Voice
 Neutral and concise. Say what happened, or what to do.
@@ -487,17 +538,17 @@ Don't add these back unless the project's scope changes; record that in PLAN.md'
 
 - **Plain CSS + CSS variables.** No Tailwind, no component library.
   ```
-  src/styles/tokens.css     # every token in this document, on :root
-  src/styles/base.css       # the reset, utilities, and every shared component's styling, as global classes
-  src/components/<Name>/<Name>.jsx        # no stylesheet of its own
-  src/pages/<Area>/<Page>.module.css      # page layout only, scoped
+  frontend/src/styles/tokens.css                 # every token in this document, on :root
+  frontend/src/styles/base.css                   # the reset, utilities, and every shared component's styling, as global classes
+  frontend/src/components/<Name>/<Name>.jsx      # no stylesheet of its own
+  frontend/src/pages/<Area>/<Page>.module.css    # page layout only, scoped
   ```
 
 Class names are joined with plain strings and `if`, not a helper:
 `let className = 'seg-btn'; if (isActive) className = 'seg-btn is-active'`. With a CSS Module, put the
 parts in an array and `join(' ')` it (see `NodeShell` in `DialogueNodes.jsx`).
 
-**Shared components have no CSS Modules** (decision of 2026-09-17). Every component in `src/components/`
+**Shared components have no CSS Modules** (decision of 2026-09-17). Every component in `frontend/src/components/`
 is styled by global classes in `base.css`. Pages keep their own `.module.css` for layout, which loads after
 `base.css` and therefore wins on equal specificity.
 

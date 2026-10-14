@@ -1,0 +1,50 @@
+/*
+ * The two signed-out pages (log in and sign up). They sit outside AppShell, so there's no sidebar,
+ * top bar or status bar here: just one centred column on an otherwise empty screen.
+ */
+
+.screen {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: var(--space-5);
+}
+
+/*
+ * A size container, which is how PropertyRow decides to put its labels above the inputs instead of
+ * beside them: the column is far narrower than the 520px it looks for.
+ */
+.column {
+    container-type: inline-size;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    width: 100%;
+    max-width: 320px;
+}
+
+/* The "GameAtlas" wordmark, until a real logo exists */
+.brand {
+    font-family: var(--font-wordmark);
+    font-size: var(--text-h1);
+    text-align: center;
+}
+
+.title {
+    text-align: center;
+    color: var(--color-text-muted);
+}
+
+.fields {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+/* Two buttons of equal width, side by side */
+.actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-2);
+}

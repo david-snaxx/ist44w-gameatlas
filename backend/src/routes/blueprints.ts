@@ -283,32 +283,43 @@ function validateBlueprintBody(
         return problems;
     }
 
-    collectFieldProblems(problems, body.fields, 'fields');
+    // A link property may point at any other blueprint in the project, or at this one (the builder offers the same)
+    const linkTargetIds = [...takenIds];
+    if (typeof body.id === 'string' && body.id !== '') {
+        linkTargetIds.push(body.id);
+    }
+
+    collectFieldProblems(problems, body.fields, 'fields', linkTargetIds);
     return problems;
 }
 
 /**
  * Checks every property, and the properties inside any group, adding what's wrong to `problems`.
  * A path says where the problem is, e.g. "fields.2.key" or "fields.2.fields.0.label".
+ * `blueprintIds` are the blueprints a link property may point at; any other target is refused.
  */
 function collectFieldProblems(
     problems: { path: string; message: string }[],
     fields: unknown[],
     pathPrefix: string,
+    blueprintIds: string[],
 ): void {
     for (let index = 0; index < fields.length; index++) {
         const field = fields[index];
         const fieldPath = `${pathPrefix}.${index}`;
 
         // validateFieldDefinition is plain JavaScript: setting name -> message
-        const fieldErrors: Record<string, string> = validateFieldDefinition(field, { siblings: fields });
+        const fieldErrors: Record<string, string> = validateFieldDefinition(field, {
+            siblings: field,
+            blueprintIds: blueprintIds,
+        });
         for (const settingName of Object.keys(fieldErrors)) {
             problems.push({ path: `${fieldPath}.${settingName}`, message: fieldErrors[settingName] });
         }
 
         const group = field as { type?: string; fields?: unknown };
         if (group.type === 'object' && Array.isArray(group.fields)) {
-            collectFieldProblems(problems, group.fields, `${fieldPath}.fields`);
+            collectFieldProblems(problems, group.fields, `${fieldPath}.fields`, blueprintIds);
         }
     }
 }

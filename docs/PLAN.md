@@ -90,25 +90,26 @@ tools, and the hand-written `[Serializable]` class that normally sits between th
 | Layer | Choice | Notes |
 |---|---|---|
 | Frontend | **React 19 + Vite 8** (JavaScript) | Already scaffolded in this repo. Stay in JS to keep the learning curve down; TypeScript is an option later. |
-| Styling | Plain CSS: design tokens, one global stylesheet (one block per shared component), CSS Modules for page-only layout | No UI library. All rules in `docs/STYLE-GUIDELINES.md`; tokens in `src/styles/tokens.css`. Icons: `lucide-react`. Fonts: `@fontsource/jetbrains-mono`, `@fontsource/silkscreen`. |
-| Node.js | **22 or 24 LTS** (recommended) | Only WebStorm's bundled Node 20.15 is installed right now; Vite 8 needs 20.19+. |
+| Styling | Plain CSS: design tokens, one global stylesheet (one block per shared component), CSS Modules for page-only layout | No UI library. All rules in `docs/STYLE-GUIDELINES.md`; tokens in `frontend/src/styles/tokens.css`. Icons: `lucide-react`. Fonts: `@fontsource/jetbrains-mono`, `@fontsource/silkscreen`. |
+| Node.js | **24 LTS** | Installed (24.21, on the PATH) on 2026-10-09; runs the backend. The frontend preview still uses WebStorm's bundled 20.15. |
 | Routing | `react-router` (v8) | Added early with the blueprint builder. Uses a data router (`createBrowserRouter`) so pages can block navigation when changes are unsaved. |
 | Graph UI | **React Flow** (`@xyflow/react` v12) | The dialogue tree editor. Themed through its `--xy-*` CSS variables; every node is a custom component. |
 | Form state | Plain React state (`useState`/`useReducer`) | Good enough for a generic renderer and good for learning React. Reconsider `react-hook-form` only if it gets painful. |
 | Frontend tests | Vitest + React Testing Library | Mainly for the renderer and validation. |
-| Backend | **Spring Boot 4.1 / Java 25 LTS** | Java 25 is installed. Use Spring Web, Spring Data JPA, Validation. |
-| Database | **MySQL 8+** | Store schema definitions and document data in **`JSON` columns**, not one table per schema. |
-| Migrations | Flyway | Keep the DB schema in version control. |
-| Backend tests | JUnit 5 + MockMvc (+ Testcontainers if Docker is available) | |
+| Backend | **Node 24 + Express 5, TypeScript** | Node runs the `.ts` files directly (type stripping), so there is no build step; `tsc` (TypeScript 7) only checks types. Imports the frontend's validation modules instead of porting them. Replaced Spring Boot on 2026-10-09 (§11). |
+| Database | **MySQL 8.4** (`mysql2` driver, plain SQL) | Store schema definitions and document data in **`JSON` columns**, not one table per schema. No ORM: three tables don't need one. |
+| Migrations | Numbered `.sql` files in `backend/migrations/`, run in order by a small script that records which ran | Keep the DB schema in version control. Same idea as Flyway, without the dependency. |
+| Auth | `express-session` + `bcryptjs` | Started 2026-10-10: sign-up, login, logout and `/me`. An httpOnly session cookie, same origin as the frontend through Vite's `/api` proxy, so no CORS or tokens. Sessions are in memory for now; move them to MySQL (e.g. `express-mysql-session`) before deploying. |
+| Backend tests | Node's built-in test runner (`node --test`), calling the app with `fetch` | Route tests only; the shared validation is covered by the frontend's Vitest suite. |
 | Local DB | Docker Compose MySQL container, or a native MySQL install | Docker isn't on PATH right now. |
-| Hosting (end) | Static frontend host + container/JVM host + managed MySQL | Decide in Phase 6. Internet deployment is preferred. |
+| Hosting (end) | Static frontend host + Node host + managed MySQL | Decide in Phase 6. Internet deployment is preferred. |
 | **Engine target** | **Unity 6 LTS**, C#, TextMeshPro | One LTS version, stated in the package README. Don't chase Unity releases mid-project. |
 | **Code generation** | Client-side string templates over the field-type registry | Runs in the browser, no backend needed, works offline. Each field type gains a `csharpType` and a literal/attribute hint (§5.7). |
 | **JSON inside Unity** | `JsonUtility` for the runtime path; `com.unity.nuget.newtonsoft-json` for the editor importer | `JsonUtility` can't parse top-level arrays, dictionaries, or string-valued enums. Newtonsoft is a first-party UPM package, so it's a safe dependency for editor-only code. |
 | **Unity package** | UPM package under `unity/`, installed by Git URL | Runtime (dialogue player + rich-text effects) and Editor (JSON → ScriptableObject importer) assemblies. |
 
 **Swap-friendly notes:** Postgres (which you already know) could replace MySQL with almost no design change
-(`JSONB` instead of `JSON`). The Spring Boot API could be replaced by any REST backend without changing the frontend
+(`JSONB` instead of `JSON`). The Express API could be replaced by any REST backend without changing the frontend
 as long as the [API contract](#6-rest-api-contract) is kept. Because the core stays engine-neutral (§2.5), a Godot
 or Unreal output layer would be a **sibling** of the Unity one, not a rewrite.
 
@@ -123,9 +124,10 @@ gameatlas/
 │   ├── PLAN.md               # This file
 │   ├── STYLE-GUIDELINES.md   # ✔ Design system (authoritative for all UI)
 │   ├── STYLE-GUIDE.md        # ✔ Filled-in style questionnaire (background only)
+│   ├── flow/                 # Capstone diagrams, one each, as of today's app: operational-flow.md ✔, functional-decomposition.md ✔, design-flow.md ✔ (older detailed versions in flow/archive/)
 │   ├── export-format.md      # (Phase 2+) Public JSON export contract for engine devs
 │   └── unity-integration.md  # (Phase 5) Install the package, generate C#, import assets, play dialogue
-├── frontend/              # Move the current Vite app here (src/, index.html, package.json, ...)
+├── frontend/              # ✔ The Vite app (src/, index.html, package.json, vite.config.js, eslint.config.js)
 │   └── src/
 │       ├── styles/        # ✔ tokens.css (design tokens) + base.css (reset, utilities, one block per shared component)
 │       ├── components/    # ✔ Shared UI: AppShell, AppSidebar, Section, Button, Table, Toast, SidePanel, …
@@ -136,11 +138,15 @@ gameatlas/
 │       ├── utils/         # ✔ Small helpers (downloads, dates, plurals, unsaved-changes guard)
 │       ├── unity/         # (Phase 5) C# code generation: type mapping + templates (pure functions, no UI)
 │       └── api/           # (Phase 2) fetch wrappers for the REST API
-├── backend/               # (Phase 2) Spring Boot project from start.spring.io
-│   └── src/main/java/.../gameatlas/
-│       ├── schema/        # Schema entity, repo, service, controller
-│       ├── document/      # Document entity, repo, service, controller
-│       └── validation/    # Validates document data against schema definition
+├── backend/               # ✔ Express API in TypeScript (package.json, tsconfig.json, .env.example)
+│   ├── migrations/        # (Phase 2) Numbered .sql files: users, projects, schemas, documents, dialogues
+│   └── src/
+│       ├── server.ts      # ✔ Starts the app on PORT
+│       ├── app.ts         # ✔ Express app: JSON bodies, /api routers, JSON 404 and 500
+│       ├── config.ts      # ✔ Every setting from .env, with local defaults
+│       ├── db.ts          # ✔ mysql2 connection pool
+│       ├── routes/        # ✔ One router per resource: health (✔), users (✔ sign-up, login, logout, /me), projects, schemas, documents, dialogues
+│       └── types/         # ✔ TypeScript interfaces: Blueprint, Asset, Dialogue and their files, Backup, Project, User, session.d.ts
 ├── unity/                 # (Phase 5) UPM package, installed into a Unity project by Git URL
 │   └── com.gameatlas.core/
 │       ├── package.json
@@ -149,8 +155,10 @@ gameatlas/
 └── docker-compose.yml     # (Phase 2) Local MySQL
 ```
 
-✔ marks what exists today. The Vite app still sits at the repo root; moving it into `frontend/` is cheap now and
-gets more expensive later, so do it before Phase 2 adds `backend/`.
+✔ marks what exists today. The Vite app moved from the repo root into `frontend/` on 2026-10-08, ahead of
+`backend/`. Each codebase keeps its own tooling in its own folder (`frontend/package.json`, `backend/package.json`);
+only the docs, `CLAUDE.md` and `.claude/` sit at the root. The backend imports the frontend's validation modules
+by relative path (`../../frontend/src/schema/validation.js`); there is no separate shared package.
 
 `unity/` holds a **Unity package, not a Unity project**. Keep a throwaway test project outside this repo (or
 gitignored) and add the package to it by local path while developing.
@@ -159,7 +167,9 @@ gitignored) and add the package to it by local path while developing.
 
 ## 5. Core data model
 
-These are the most important design decisions in the project. Everything else builds on them.
+These are the most important design decisions in the project. Everything else builds on them. The exact
+shapes, setting by setting, are TypeScript types in `backend/src/types/` (`Blueprint`, `Asset`, `Dialogue`,
+their export files and `Backup`).
 
 ### 5.1 Concepts
 
@@ -193,14 +203,14 @@ These are the most important design decisions in the project. Everything else bu
 ```
 
 A custom format (instead of raw JSON Schema) is easier for the form builder to read and write.
-This format is implemented: `toDefinition()` in `src/schema/blueprintDraft.js` produces it. Saved files leave out
+This format is implemented: `toDefinition()` in `frontend/src/schema/blueprintDraft.js` produces it. Saved files leave out
 empty settings, settings that don't apply to the type, `required: false` and editor-only `uid`s. Property IDs start
 with a letter and may use camelCase; blueprint IDs are `snake_case`. **Stretch goal:**
 generate standard JSON Schema from it for engine-side validation.
 
 ### 5.3 Field type registry
 
-| Type | Input UI | Component (✔ built, in `src/components/form/`) | Stored/exported as | Phase |
+| Type | Input UI | Component (✔ built, in `frontend/src/components/form/`) | Stored/exported as | Phase |
 |---|---|---|---|---|
 | `string` | text input | ✔ `TextInput` | `"..."` | 1 |
 | `text` | textarea | ✔ `TextArea` | `"..."` | 1 |
@@ -241,7 +251,7 @@ Adding a type then means adding one entry, with no changes to the renderer. The 
 ```
 
 - **`key`** is a human-readable ID, unique per schema. Engines and references use it. The UUID `id` is internal.
-- **Export** (implemented as `toExport()` in `src/data/assetData.js`) writes one object per asset:
+- **Export** (implemented as `toExport()` in `frontend/src/data/assetData.js`) writes one object per asset:
   `{ "id": "<key>", "blueprint": "<schemaId>", "blueprintVersion": <schemaVersion>, "data": { ... } }`.
   Values stay nested under `data`, so a property named `id` can't clash with the asset's ID. Numbers are numbers;
   empty optional numbers, choices and links are `null`. "Download all" writes an array of these objects.
@@ -271,7 +281,7 @@ Adding a type then means adding one entry, with no changes to the renderer. The 
 - Custom (user-defined) graph shapes are **out of scope**. They're a possible future extension.
 
 **Implemented (2026-09-14).** The node editor is **only for dialogue trees**. Dialogues have their own model
-(`src/data/dialogueGraph.js`), store and pages (`/dialogues`). Node types: Start, Line, Player choice, Check flag,
+(`frontend/src/data/dialogueGraph.js`), store and pages (`/dialogues`). Node types: Start, Line, Player choice, Check flag,
 Action (give item / set story flag) and End. The downloaded file (`toDialogueExport()`):
 
 ```json
@@ -305,7 +315,30 @@ schemas   (id VARCHAR PK, name, kind ENUM('form','graph'), version INT,
 documents (id CHAR(36) PK, schema_id FK→schemas.id, doc_key VARCHAR,
            schema_version INT, data JSON, created_at, updated_at,
            UNIQUE(schema_id, doc_key))
+
+users     (id CHAR(36) PK, email UNIQUE, password_hash, display_name, created_at,
+           project_ids JSON)
+
+projects  (id CHAR(36) PK, name, created_at, member_user_ids JSON,
+           blueprint_ids JSON, asset_ids JSON, dialogue_ids JSON)
 ```
+
+**Users and projects (2026-10-10).** A project is one game's data, shared by its members. Who is in a project and
+what it contains are **ID arrays on the project** (and a user's projects are an array on the user), which is the
+user's choice over a `project_id` column and a members join table: the shapes are easier to picture. MySQL can't
+enforce anything inside a JSON array, so the code keeps these four rules:
+
+1. Arrays only change inside a transaction, with the row read `FOR UPDATE` (a helper like `withLockedProject`), so
+   two people saving at once can't overwrite each other's change.
+2. Writes that come in pairs go in that same transaction: an item and the project's list; a member on both the project
+   and the user; deleting a blueprint (its assets and their IDs go too), a project or a user.
+3. Access is checked on the project: the user is in `memberUserIds` **and** the requested item's ID is in the
+   project's list. `user.projectIds` is only for listing "my projects"; if the two disagree, the project wins.
+4. IDs that must be unique within a project (blueprint and dialogue IDs) are checked in code, inside the locked
+   transaction.
+
+Blueprint IDs like `item` are now only unique per project, so blueprint rows get an internal UUID (that's what
+`blueprint_ids` holds) and a separate `schema_key`; the API keeps showing the snake_case ID as a blueprint's `id`.
 
 Storing data as JSON avoids one table per schema and avoids an entity-attribute-value (EAV) design. The
 backend validates `data` against the schema's `definition` on every write. **Never trust the frontend alone.**
@@ -411,7 +444,46 @@ scope. Three things follow from this design:
 
 ## 6. REST API contract
 
-Base path `/api`. JSON in and out. In dev, Vite proxies `/api` → `http://localhost:8080`, so CORS isn't needed.
+Base path `/api`. JSON in and out. In dev, Vite proxies `/api` → `http://localhost:3000`, so CORS isn't needed.
+
+**Superseded by the table below (2026-10-10).** The original sketch used `/api/schemas` and `/api/documents`
+with no project. The routes that exist now use the UI names and are scoped to a project, because a blueprint's
+snake_case ID is only unique inside one (§5.6).
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/projects` | Every project the logged-in user is a member of |
+| GET / PUT / DELETE | `/api/projects/{id}` | One project. PUT renames it; DELETE removes it and everything in it |
+| POST | `/api/projects` | Start an empty project (`{ name }`) with the caller as its first member |
+| GET | `/api/blueprints?projectId=…` | Every blueprint in the project |
+| GET / DELETE | `/api/blueprints/{id}?projectId=…` | One blueprint by its snake_case ID. DELETE takes its assets too |
+| POST / PUT | `/api/blueprints` and `/api/blueprints/{id}` | Create or replace (`{ projectId, id, name, description?, fields }`). PUT bumps `version` |
+| GET | `/api/assets?projectId=…&blueprintId=item` | Every asset in the project, or only one blueprint's |
+| GET / DELETE | `/api/assets/{id}?projectId=…` | One asset by its UUID |
+| POST / PUT | `/api/assets` and `/api/assets/{id}` | Create or replace (`{ projectId, key, schemaId, data }`); validated against the blueprint |
+| GET | `/api/dialogues?projectId=…` | Every dialogue in the project |
+| GET | `/api/dialogues/{id}?projectId=…` | One dialogue, plus `problems` from the graph checks |
+| POST / PUT | `/api/dialogues` and `/api/dialogues/{id}` | Create or replace (`{ projectId, key, name, description?, speakerBlueprint?, itemBlueprint?, nodes, edges }`) |
+| DELETE | `/api/dialogues/{id}?projectId=…` | One dialogue by its UUID |
+
+**How a request names its project.** `projectId` is a query parameter on GET and DELETE, and a body field on
+POST and PUT. Every one of these routes answers 401 when nobody is logged in and **404** when the caller isn't a
+member of the project, so the difference can't be used to discover which project IDs exist.
+
+**What `{id}` means.** For assets, dialogues and projects it's the row's UUID. For blueprints it's the
+snake_case ID users see (`item`), which is why those routes always need a `projectId` as well — the row's own
+UUID stays inside the database and is what `projects.blueprint_ids` holds.
+
+**A repeated ID answers 400, not 409.** Blueprint and asset IDs have to be unique (per project, and per
+blueprint), and the routes check that in code so the answer is an inline `{ errors: [{ path, message }] }` on the
+`id` or `key` box, which is what the form can show. The `UNIQUE` index is still there and still turns into a 409,
+but only for a genuine race between two saves — in normal use it never fires.
+
+**A dialogue can be saved unfinished**, like in the editor, so the tree checks don't refuse a write: `GET
+/api/dialogues/{id}` returns them alongside the dialogue as `problems`. Only the name and ID are strict enough
+to answer 400.
+
+The original sketch, kept for reference:
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -428,6 +500,23 @@ Base path `/api`. JSON in and out. In dev, Vite proxies `/api` → `http://local
 | GET | `/api/documents/{id}/export` | Clean engine-ready JSON (download) |
 | GET | `/api/schemas/{id}/export` | All documents of a schema as one JSON file (stretch) |
 | POST | `/api/documents/import` | Import an existing JSON file as a document (validated) |
+
+Users and login (added 2026-10-10). `/me` routes read the user from the session cookie, so nobody can reach
+someone else's account by changing an ID in the URL:
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/users` | Sign up (`{ email, password, displayName }`); starts in no projects. 409 when the email is already registered |
+| POST | `/api/users/login` | Log in (`{ email, password }`); sets the session cookie. 401 `Wrong email or password` |
+| POST | `/api/users/logout` | Log out; ends the session and clears the cookie |
+| GET | `/api/users/me` | The logged-in user, without the password hash. 401 when not logged in |
+| GET / PUT / DELETE | `/api/users/{id}` | For testing; become `/me` versions (PUT changes only email and display name; 409 when the email is taken) |
+| GET | `/api/users` | Testing only (shows every email); remove before deploying |
+
+Other errors (400, 401, 404, 409, 500) answer `{ "message": "…" }`. `email` must be a string (400 otherwise). Sign-up rules: `password` is 8 characters or more and at most 72 bytes (bcrypt
+ignores anything after that); `displayName` is 1–64 characters, saved without spaces at either end (the same rule on update).
+Login only checks that the password is a string, so accounts made under older rules can still log in. One account per
+email is enforced by the `UNIQUE` index on `users.email`: the routes turn MySQL's `ER_DUP_ENTRY` into the 409.
 
 Validation errors return `400` with field-level detail the form can show inline:
 ```json
@@ -456,7 +545,7 @@ Dates assume the 12/1 deadline and are targets. Each phase ends with a **demoabl
 ### Phase 0: Setup (Week of 9/14)
 - [x] `git init` (branch `main`)
 - [ ] First commit; push to a private GitHub repo (no commits or remote yet as of 2026-09-14)
-- [ ] Move the Vite app into `frontend/`; confirm `npm run dev` still works
+- [x] Move the Vite app into `frontend/`; confirm `npm run dev` still works (2026-10-08)
 - [x] Remove Vite template content (hero image, counter, logos, demo CSS, public icons)
 - [x] Add `CLAUDE.md` and `docs/PLAN.md`
 - [x] Design system: `docs/STYLE-GUIDELINES.md`, design tokens, shared components, `AppShell`, and the style showcase page (the showcase was deleted on 2026-09-24)
@@ -464,10 +553,10 @@ Dates assume the 12/1 deadline and are targets. Each phase ends with a **demoabl
 
 ### Phase 1: Web-form document editor, frontend only (9/14 → 10/4) · Deliverable **Ga.1**
 Goal: a form that creates **and reads back** correctly formatted JSON, with no backend.
-- [x] Example schemas: starter `Item` and `Entity` blueprints (`src/schema/starterBlueprints.js`) that use every field type
-- [x] Field-type registry: `src/schema/fieldTypes.js` (labels, defaults, settings) + `FieldInput` (the input for each type)
+- [x] Example schemas: starter `Item` and `Entity` blueprints (`frontend/src/schema/starterBlueprints.js`) that use every field type
+- [x] Field-type registry: `frontend/src/schema/fieldTypes.js` (labels, defaults, settings) + `FieldInput` (the input for each type)
 - [x] `FormRenderer({ fields, values, onChange, errors })`, fully generic (already used by the builder's live preview)
-- [x] Client-side validation (`src/schema/validation.js`) with inline error messages
+- [x] Client-side validation (`frontend/src/schema/validation.js`) with inline error messages
 - [x] **Export:** download one asset file from the editor, or "Download all" for a blueprint from the asset browser
 - [x] **Import:** load a `.json` asset file → check it belongs to this blueprint → fill the form (errors for bad files)
 - [x] Read-only JSON preview of the export shape, next to a clickable validation summary
@@ -479,16 +568,17 @@ Goal: a form that creates **and reads back** correctly formatted JSON, with no b
 ### Phase 2: Database + REST integration (9/18 → 10/18) · Deliverable **Ga.2**
 Goal: documents are saved on a server and can be browsed and reopened.
 > This phase now also absorbs the "save through the API" checkboxes left open in Phases 3 and 4.
-- [ ] Generate Spring Boot project in `backend/` (Web, Data JPA, Validation, MySQL driver, Flyway)
-- [ ] Local MySQL (Docker Compose or native); Flyway migration for `schemas` and `documents`
+- [x] Node + Express + TypeScript project in `backend/`: health check, MySQL pool, settings from `.env`, Vite `/api` proxy (2026-10-09; replaces the Spring Boot project generated on 2026-10-08)
+- [ ] Local MySQL (native MySQL 8.4 is installed and running; create the `gameatlas` database and user); migration runner + first migration for `schemas` and `documents`
 - [ ] Seed the Phase 1 schema(s) into `schemas` (e.g. `Item`, `Entity`)
-- [ ] Document CRUD endpoints + server-side validation against the schema definition (Java port of the field registry)
+- [ ] Document CRUD endpoints + server-side validation against the schema definition (imports the frontend's `validation.js` directly)
 - [ ] Export endpoint (clean JSON)
 - [x] Frontend pages for **Document list → Document editor** (`/blueprints/:id/assets` and `/blueprints/:id/assets/:key`)
 - [ ] Frontend `api/` module; loading and error states; save/delete with confirmation; swap `blueprintStore`'s localStorage calls for API calls
 - [ ] `reference` field type (dropdown populated from `/api/documents?schemaId=…`). ✔ Already works against locally stored assets, including "That asset no longer exists" checks and link updates when an asset's ID changes; switch the source to the API
 - [ ] Write `docs/export-format.md`
-- [ ] Backend tests: validation service unit tests + controller tests
+- [ ] Users and projects (§5.6): sign-up and login (`bcryptjs` + session cookie; backend routes done 2026-10-10, ✔ login and sign-up pages 2026-10-10), a project picker, creating projects, adding members. After blueprints, assets and dialogues save through the API; until then everything lives in one seeded project
+- [ ] Backend tests: route tests with `node --test` (validation itself is tested once, in the frontend's Vitest suite)
 - **Done when:** a document created in the browser survives a page reload and server restart, can be browsed, edited, exported, and can reference another document.
 
 ### Phase 3: Schema (form) builder (done early; API wiring in Phase 2) · Deliverable **Ga.3**
@@ -507,7 +597,7 @@ Goal: users create their own schemas, and the resulting forms behave exactly lik
 Goal: branching dialogue data in the same app, using the same storage and export path.
 - [x] Add `@xyflow/react` (v12); dialogues are their own section (`/dialogues`), not a user-built blueprint
 - [x] Custom nodes: Start, Line, Player choice, Check flag, Action (give item / set story flag), End, edited inline with the shared input components
-- [x] Convert canvas `nodes/edges` ↔ stored graph and the export file (pure functions in `src/data/dialogueGraph.js`; tests still to write)
+- [x] Convert canvas `nodes/edges` ↔ stored graph and the export file (pure functions in `frontend/src/data/dialogueGraph.js`; tests still to write)
 - [x] Speakers and given items link to assets of blueprints chosen per dialogue (**form↔graph bridge**); renaming an asset updates dialogues too
 - [x] Graph validation: Start connected, every output connected, nodes reachable from Start, text/flags/items filled in, links resolve, at least one End
 - [ ] Save/load through the API (for now `dialogueStore` uses localStorage; ✔ downloads already strip canvas positions)
@@ -524,7 +614,7 @@ Goal: data authored in GameAtlas reaches a running Unity game without anyone han
 
 **(a) C# generation — frontend only, no Unity required**
 - [ ] Add C# mapping to the field-type registry (`csharpType`, attribute hints, enum handling — §5.7)
-- [ ] `src/unity/` generator: pure functions, blueprint → `.cs` source string (nested classes for `object`, `List<T>` for `list`, generated `enum` types)
+- [ ] `frontend/src/unity/` generator: pure functions, blueprint → `.cs` source string (nested classes for `object`, `List<T>` for `list`, generated `enum` types)
 - [ ] "Generate C#" on the blueprint page: preview tab next to the blueprint file tab, and download `.cs`
 - [ ] "Download all scripts" across blueprints, plus the generated dialogue model classes
 - [ ] Tests: generated source is stable for the starter blueprints (snapshot); round-trip a record through the documented shape
@@ -550,12 +640,11 @@ Goal: data authored in GameAtlas reaches a running Unity game without anyone han
 > Thanksgiving is 11/26. Treat this week as reduced capacity.
 - [ ] Usability sessions with testing users (see §8) — recruit **Unity developers and the writers/artists who work with them**
 - [ ] Fix the top issues found; minimum-viable visual polish
-- [ ] Deploy (frontend static host + backend + managed MySQL); environment config via env vars
-- [ ] Optional: simple auth, so schemas are tied to an account/team
+- [ ] Deploy (frontend static host + backend + managed MySQL); environment config via env vars, including `SESSION_SECRET`, `secure` cookies over HTTPS and a MySQL session store; remove `GET /api/users`
 - [ ] Final README, demo script, capstone documentation updates
 
 ### Stretch / future (explicitly out of scope unless ahead of schedule)
-XML export · JSON Schema generation · bulk export per schema/project · projects/workspaces · auth and teams ·
+XML export · JSON Schema generation · bulk export per schema/project · roles and permissions inside a project ·
 real-time collaboration · user-defined graph shapes · dialogue "playthrough" preview (like Yarn Spinner) ·
 **Godot / Unreal output layers** · an in-Unity browser window (UIToolkit) that pulls from the API directly ·
 publishing the package to the Asset Store or OpenUPM · pre-parsed effect ranges in the export ·
@@ -592,7 +681,7 @@ Electron desktop build · undo/redo · document version history.
 - ~3 hrs: build one vertical slice
 - ~1 hr: tests, commit, update checklist in this file, note any decisions in the log
 
-Use AI assistants for boilerplate (Spring entities/controllers, field components, Flyway SQL) and for explaining
+Use AI assistants for boilerplate (Express routes, field components, SQL migrations) and for explaining
 React concepts. Keep architectural decisions in this document.
 
 ---
@@ -603,11 +692,12 @@ React concepts. Keep architectural decisions in this document.
 |---|---|---|
 | React/React Flow learning curve | Slips Phase 1 and Phase 4 | Learn just-in-time per task; keep components simple; lean on React Flow examples |
 | ~5 hrs/week vs. 4 deliverables in 11 weeks | Most likely cause of missed deadline | Schema-driven renderer from day one (makes Phase 3 cheap); cut stretch items first; if needed, drop `list`/`object` types or graph validation depth before dropping a deliverable |
-| Duplicated validation logic in JS and Java drifts | Frontend accepts what backend rejects | Shared test fixtures (same valid/invalid JSON cases run in both test suites); backend is authoritative |
+| The shared validation modules pick up browser-only code (React, `window`, `localStorage`, Vite-only imports) | The backend can't load them and every write fails | Keep `frontend/src/schema/` and the logic in `frontend/src/data/` free of UI and browser APIs (rule in CLAUDE.md); the backend's `npm run typecheck` and its route tests load them, so a break shows up at once. Replaces the old "JS and Java validation drift" risk, which went away with the Node backend |
 | Schema changes break existing documents | Data loss/confusion | `schemaVersion` on documents; additive-only changes in MVP; warn on breaking edits |
 | Hosting cost/knowledge unknown | Deployment delays | Pick hosting by end of Phase 3; do a throwaway deploy of a "hello" backend early |
-| MySQL-specific unfamiliarity | Minor | JSON column + JPA keeps SQL surface small; Postgres is a viable swap |
-| Tooling: installed Node (20.15) is below Vite 8's minimum | Build warnings; npm skips Vite's native Windows package | Install Node 22/24 LTS, then delete `node_modules` and run `npm install` |
+| MySQL-specific unfamiliarity | Minor | Two tables with JSON columns keep the SQL small; Postgres is a viable swap |
+| Tooling: the frontend preview still runs on WebStorm's Node 20.15, below Vite 8's minimum | Build warnings | Node 24 is installed now (2026-10-09); point the `frontend` config in `.claude/launch.json` at `node` |
+| Backend tooling is very new: TypeScript 7 (native compiler) and Node's type stripping | An unexpected tool bug costs a day | Only `tsc` checks types and nothing is compiled, so falling back to TypeScript 6 (`npm install -D typescript@6`) changes nothing at runtime |
 | Glass/glow styling hurts readability as colors get tuned | Text gets hard to read | Check readability over the brightest glow whenever glass or glow tokens change (STYLE-GUIDELINES §5.6) |
 | No accessibility layer (decision of 2026-09-23) | Keyboard-only or screen-reader users struggle; an accessibility review would fail | Native elements (`<button>`, `<select>`, checkbox, `<dialog>`) keep basic keyboard use working. Revisit only if Phase 6 testing or the course requires it, and log the change here |
 | Phase 5 adds a **third codebase in a third language** (C#/Unity) with its own toolchain | Phase 5 slips and takes Phase 6 with it | Phase 5 is layered by risk: (a) generation is frontend-only, (b) the importer is editor-only, (c) the runtime is last and is the designated cut. Any one of them alone is a demo. |
@@ -655,6 +745,9 @@ Add new entries at the bottom. Format: `date · decision · why`.
 - 2026-09-17 · C# generation runs **client-side**, not as an API endpoint · Works before the backend exists and offline; the field-type registry already holds everything it needs.
 - 2026-09-17 · Dialogue text carries **inline** rich-text tags: TMP-native ones pass through, GameAtlas effect tags (`<wave>`, `<shake>`, `<speed=…>`, `<pause=…>`) are stripped and applied by the runtime · A tag's meaning is its position in the sentence, so lifting them into separate range data would hurt readability and diffing. GameAtlas validates them and previews them live; the grammar goes in `docs/export-format.md`. The effect set stays small and fixed.
 - 2026-09-17 · New **Phase 5 "Unity integration" (Ga.5)**; hardening/testing/deployment becomes Phase 6 · Ga.1–Ga.4 keep their Project Brief numbering. Phase 5 is ordered by risk so its last part (the TMP effect renderer) is the designated cut.
+- 2026-10-10 · **Account page** (`/account`) and the logged-in name at the foot of the sidebar · User request, still proof of concept. Who is logged in lives in one small store (`src/api/currentUserStore.js`) that asks `GET /api/users/me` once per page load; the sidebar is rebuilt on every page, so asking each time cost a round trip per click. The page shows every field of the `User` type except `passwordHash`, which the API never sends. **Log out** sits under the name in the sidebar and ends the session for real: after it, `GET /api/users/me` answers 401 again (STYLE-GUIDELINES §7.17). Still nothing requires a login to reach.
+- 2026-10-10 · **Login and sign-up pages** (`/login`, `/signup`), the first frontend code that calls the API · User request. They stand alone deliberately: nothing else checks for a session yet and no existing page was changed. Full-screen outside `AppShell` (STYLE-GUIDELINES §7.16); what the person can see for themselves is checked in the browser and shown under the field, and what only the server knows comes back as an error toast in the server's own words. Signing up doesn't start a session, so it hands over to `/login` with the email filled in.
+- 2026-10-10 · **Asset, blueprint, dialogue and project routes** use the UI names (`/api/blueprints`, `/api/assets`, `/api/dialogues`, `/api/projects`) rather than §6's original `/api/schemas` and `/api/documents`, and each request names its project with `projectId` (query on GET/DELETE, body on POST/PUT) · User decision. The names match the types and §5.6's `blueprint_ids` / `asset_ids` / `dialogue_ids` columns, and flat paths stay closest to the original contract. Paired writes share a transaction (`withTransaction` in `src/projectAccess.ts`); `SELECT … FOR UPDATE` row locking from §5.6 rule 1 is **not built yet**, so two people saving at the same moment can still lose one change. Per-project ID uniqueness is enforced by UNIQUE indexes turned into 409s, not by a check inside the lock (rule 4).
 - 2026-09-23 · **Deleted the showcase's static graph mock** (`GraphSection`, 534 lines) · It was written before Phase 4 as a preview of the node editor ("the real one will use React Flow"); the real editor now exists at `/dialogues` and owns the node styling, so the mock only risked drifting from it. Also removed the unused `nodeOutputs()` helper (dialogue validation writes its own per-output messages) and the unused `--frame-gap` token, and un-exported seven helpers that were only used inside their own module.
 - 2026-09-23 · **Page layout classes moved into `base.css` too** (`.panes`, `.stack`, `.subhead`, `.divider`, `.empty-box`, `.canvas`, `.toolbar-filter`), so the three editors' identical pane grids are written once; a page sets only its column widths, inline as `--panes`. Four page stylesheets deleted; the five that remain are genuinely page-specific (dashboard, settings, asset view, property tree, graph canvas/nodes) plus the dev-only showcase · User request to reduce the number of CSS files.
 - 2026-09-23 · **Pages compose shared page-level components** instead of repeating chrome: `ListPage` (the four list pages), `MissingRecord` (six not-found blocks, including the 404 route), `TopBarActions` (three near-identical files), `Notice`/`ImportNotice`, `useUnsavedChanges` + `UnsavedChangesDialog` (three identical guards) and `downloadCollection` (three copies of the same guard). The shared page-shell CSS moved to `base.css` · User request to simplify. Also normalized `parseBlueprintFile` to return `{ imported }` like the asset and dialogue parsers, so no adapter is needed.
@@ -666,6 +759,13 @@ Add new entries at the bottom. Format: `date · decision · why`.
 - 2026-09-24 · **Style showcase deleted** (`/dev/styles`, the sidebar's Developer section and the dashboard footnote) · User decision; the real pages are now the reference, so it was about 1,100 lines of upkeep.
 - 2026-09-24 · **`base.css` is one block per component**, replacing the shared "shape groups" (all flex rows in one rule, all gaps in another) from the 2026-09-17 entry · User decision. Everything that styles a component is now in one place, at the cost of repeating a few `display`/`gap` lines. Page-only classes that had become tweaks were dropped (`.flush`, `.canvas`, `.missing`, `.empty-box`, `.stack-start`, `.toolbar-filter`, `.option-list`); the dialogue canvas now uses React Flow's own dark theme apart from edge colors, and the unused `--color-node-*`, canvas, `--color-border-strong` and motion tokens were removed.
 - 2026-09-24 · **Readable over compact code:** logic moves out of JSX into plain statements (`if`/`else`, `for…of`, named variables) and small named components; no nested ternaries, `&&` chains, chained array methods or `.map()` inside `.map()` · User request: the owner reads Java/C# comfortably but found the dense lambdas, ternaries and nesting overwhelming. Applied to `AppSidebar` first as the reference, then to the whole frontend the same day: every component, page and logic module in `src/schema`, `src/data` and `src/utils`. The `cx` class-name helper was removed (class names are built with `if`), repeated blocks became small named components (e.g. `MissingAsset`, `SettingRow`, one component per property type in `TypeSettings`), and two shared helpers were added (`onlyTouchedErrors` in `validation.js`, `dialogueCheckContext` in `dialogueGraph.js`). A comparison script ran 265 cases through the old and new logic modules and got identical results. The rules are in CLAUDE.md.
+- 2026-10-08 · **The Vite app moved into `frontend/`** (with `git mv`, so file history follows), ahead of generating the Spring Boot project in `backend/` · Planned in §4; one folder per codebase keeps the React `src/` apart from `backend/src`. Doc paths now start with `frontend/` (entries above this one keep the paths of their day), and the browser-preview config runs Vite with `frontend` as its root.
+- 2026-10-08 · **Backend generated in `backend/`** with Maven, Spring Boot 4.1.1, Java 25 and package `com.gameatlas.backend`; no Git repository of its own, so the root repo tracks it. Spring Security is left out until the login step · Maven's `pom.xml` is what most Spring guides show, and the wrapper (`mvnw`) means nothing extra to install. Security locks every endpoint as soon as it's on the classpath, which would get in the way while building the first CRUD endpoints. `backend/.gitattributes` pins the wrapper scripts' line endings, since this machine converts line endings on checkout (`core.autocrlf=true`).
+- 2026-10-09 · **Backend switched from Spring Boot to Node 24 + Express 5 in TypeScript**; the Spring project from 2026-10-08 was deleted before any code was written in it · User decision, to finish Phase 2 sooner. The deciding reason is that server-side validation (§5.6) already exists in JavaScript: the backend imports `validation.js`, `fieldTypes.js` and the dialogue checks from the frontend instead of porting about 1,200 lines to Java and keeping two copies in sync. The data is JSON, which needs no mapping in Node, and session login with `express-session` + `bcrypt` is far less setup than Spring Security. Cost: the user knows Java/Spring better than Node, so the backend keeps the same readable-code rules as the frontend and uses TypeScript only lightly. Details: Node runs the `.ts` files directly (type stripping), so there's no build step and `tsc` only checks types; settings come from `backend/.env` via `--env-file-if-exists`; `mysql2` with plain SQL instead of an ORM; Vite proxies `/api` to port 3000, so the frontend and API share one origin.
+- 2026-10-09 · **The saved data and file formats are typed** as TypeScript interfaces in `frontend/src/types/`. Properties (`Field`) and dialogue nodes (`DialogueNode`, `ExportedNode`) are unions keyed by `type`, so each type only has its own settings; editor-only shapes (drafts, form values) stay untyped · User request, ahead of the backend's CRUD routes. Interfaces rather than classes because every object arrives as plain JSON (localStorage, files, API bodies, MySQL JSON columns): classes would need converting at each of those points, and React's `{ ...asset }` copies drop a class anyway. They live in the frontend next to the code that defines the shapes, and the backend imports them like the validation modules; the frontend itself stays JavaScript (2026-09-14 entry). Checked by running the real frontend code (starter data, round trips, exports, imports, validation results, a backup) and type-checking its output against the types, plus deliberately wrong objects that must fail.
+- 2026-10-10 · **Users and projects come into scope** (out of the stretch list and the optional Phase 6 auth). A project holds one game's blueprints, assets and dialogues and its members, all as ID arrays on the project, with a user's projects as an array on the user (§5.6) · User decision. A `project_id` column plus a members join table was suggested, since MySQL can enforce rules on columns but not inside JSON arrays; the user preferred the array shapes as easier to picture, at the cost of more code. The four rules in §5.6 (locked transactions, paired writes, access checked on the project, uniqueness checked in code) make the arrays safe at this scale. Order: save and load through the API first, in one seeded project; login and the project picker after that, so Ga.2 doesn't wait on them.
+- 2026-10-10 · **The TypeScript types moved from `frontend/src/types/` to `backend/src/types/`** · User decision: the backend is the only code that uses them, and the frontend stays JavaScript for now. The rule that a type changes together with its shape in the frontend's `schema/` or `data/` code still holds.
+- 2026-10-10 · **Login is a server session with a cookie** (`express-session`), not tokens; `/me` routes take the user from the session · The frontend and API share one origin through Vite's proxy, so an httpOnly cookie needs no CORS and no token handling in the frontend. Login starts a fresh session (`regenerate`) and answers the same for an unknown email and a wrong password. Sessions live in memory until a MySQL store is added before deploying. Sign-up no longer accepts `projectIds`, and updating a user can't change them: membership only changes through project routes, which keep both arrays in step (§5.6, rule 2).
 
 ---
 

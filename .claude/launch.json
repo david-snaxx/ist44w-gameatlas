@@ -3,9 +3,15 @@
   "configurations": [
     {
       "name": "frontend",
-      "runtimeExecutable": "C:/Users/snaxx/AppData/Roaming/JetBrains/WebStorm2026.2/node/versions/20.15.0/node.exe",
-      "runtimeArgs": ["node_modules/vite/bin/vite.js", "--port", "5173", "--strictPort"],
+      "runtimeExecutable": "C:/Program Files/nodejs/node.exe",
+      "runtimeArgs": ["frontend/node_modules/vite/bin/vite.js", "frontend", "--port", "5173", "--strictPort"],
       "port": 5173
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["--watch", "--env-file-if-exists=backend/.env", "backend/src/server.ts"],
+      "port": 3000
     }
   ]
 }

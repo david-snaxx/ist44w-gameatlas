@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { createBrowserRouter, RouterProvider } from 'react-router'
 import ToastProvider from './components/Toast/ToastProvider.jsx'
+import AccountPage from './pages/Account/AccountPage.jsx'
 import AllAssetsPage from './pages/Assets/AllAssetsPage.jsx'
 import AssetEditorPage from './pages/Assets/AssetEditorPage.jsx'
 import AssetListPage from './pages/Assets/AssetListPage.jsx'
@@ -9,6 +10,8 @@ import BlueprintBuilderPage from './pages/Blueprints/BlueprintBuilderPage.jsx'
 import BlueprintListPage from './pages/Blueprints/BlueprintListPage.jsx'
 import DashboardPage from './pages/Dashboard/DashboardPage.jsx'
 import DialogueListPage from './pages/Dialogues/DialogueListPage.jsx'
+import LoginPage from './pages/Login/LoginPage.jsx'
+import SignUpPage from './pages/Login/SignUpPage.jsx'
 import NotFoundPage from './pages/NotFound/NotFoundPage.jsx'
 import SettingsPage from './pages/Settings/SettingsPage.jsx'
 
@@ -35,6 +38,10 @@ const router = createBrowserRouter([
   { path: '/dialogues/new', element: lazyPage(<DialogueEditorPage />) },
   { path: '/dialogues/:dialogueKey', element: lazyPage(<DialogueEditorPage />) },
   { path: '/settings', element: <SettingsPage /> },
+  { path: '/account', element: <AccountPage /> },
+  // Signed-out pages. They stand on their own for now: nothing else checks for a login yet.
+  { path: '/login', element: <LoginPage /> },
+  { path: '/signup', element: <SignUpPage /> },
   { path: '*', element: <NotFoundPage /> },
 ])
 
