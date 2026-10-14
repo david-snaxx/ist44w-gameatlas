@@ -2,6 +2,8 @@ import { FIELD_TYPES, TYPE_SETTINGS, VECTOR_AXES } from './fieldTypes.js'
 
 export const BLUEPRINT_ID_PATTERN = /^[a-z][a-z0-9_]*$/
 export const PROPERTY_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/
+export const MAX_BLUEPRINT_ID_LENGTH = 64
+export const MAX_BLUEPRINT_NAME_LENGTH = 120
 
 function isEmpty(value) {
   return value === undefined || value === null || value === ''
@@ -311,17 +313,7 @@ export function validateBlueprint(draft, options = {}) {
 
   const errors = {}
 
-  const general = {}
-  if (!draft.name.trim()) {
-    general.name = 'Enter a name'
-  }
-  if (!draft.id) {
-    general.id = 'Enter an ID'
-  } else if (!BLUEPRINT_ID_PATTERN.test(draft.id)) {
-    general.id = 'Start with a lowercase letter, then use lowercase letters, numbers or underscores'
-  } else if (otherIds.includes(draft.id)) {
-    general.id = 'Another blueprint already uses this ID'
-  }
+  const general = validateBlueprintDetails(draft, otherIds)
   if (draft.fields.length === 0) {
     general.fields = 'Add at least one property'
   }
@@ -346,13 +338,61 @@ function checkFieldsInto(errors, fields, blueprintIds) {
   }
 }
 
-/** Checks an asset's ID: required, lowercase snake_case, and unique among its blueprint's assets. */
-export function validateAssetKey(key, blueprintAssets, currentAssetId) {
-  if (!key) {
+/**
+ * Checks how a blueprint, asset or dialogue ID is written: required, lowercase snake_case, and at most
+ * MAX_ID_LENGTH characters. Returns a message, or null when it's fine. Whether it's taken is checked by the caller.
+ */
+export function validateIdFormat(id) {
+  if (!id) {
     return 'Enter an ID'
   }
-  if (!BLUEPRINT_ID_PATTERN.test(key)) {
+  if (!BLUEPRINT_ID_PATTERN.test(id)) {
     return 'Start with a lowercase letter, then use lowercase letters, numbers or underscores'
+  }
+  if (id.length > MAX_BLUEPRINT_ID_LENGTH) {
+    return `Use ${MAX_BLUEPRINT_ID_LENGTH} characters or fewer`
+  }
+  return null
+}
+
+/** Checks a blueprint or dialogue name: required, and at most MAX_NAME_LENGTH characters. Returns a message or null. */
+export function validateName(name) {
+  if (!name.trim()) {
+    return 'Enter a name'
+  }
+  if (name.trim().length > MAX_BLUEPRINT_NAME_LENGTH) {
+    return `Use ${MAX_BLUEPRINT_NAME_LENGTH} characters or fewer`
+  }
+  return null
+}
+
+/**
+ * Checks a blueprint's name and ID. Returns { name?, id? } with a message for each problem.
+ * otherIds: the IDs of the other saved blueprints (a blueprint's ID must be unique)
+ */
+export function validateBlueprintDetails(details, otherIds) {
+  const errors = {}
+
+  const nameError = validateName(details.name)
+  if (nameError) {
+    errors.name = nameError
+  }
+
+  const idError = validateIdFormat(details.id)
+  if (idError) {
+    errors.id = idError
+  } else if (otherIds.includes(details.id)) {
+    errors.id = 'Another blueprint already uses this ID'
+  }
+
+  return errors
+}
+
+/** Checks an asset's ID: written like every ID (validateIdFormat), and unique among its blueprint's assets. */
+export function validateAssetKey(key, blueprintAssets, currentAssetId) {
+  const formatError = validateIdFormat(key)
+  if (formatError) {
+    return formatError
   }
   for (const asset of blueprintAssets) {
     if (asset.key === key && asset.id !== currentAssetId) {

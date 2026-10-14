@@ -14,7 +14,7 @@ export type Field = | TextField | NumberField | BoolField | EnumField | VectorFi
 
 /** A schema definition for an {@link Asset}. This is most comparable to a type or plain object class. */
 export interface Blueprint {
-    /** The ID users see: snake_case, unique among blueprints. Assets and links refer to it. */
+    /** The ID users see, unique among blueprints. Assets and links use this. */
     id: string
     /** The name displayed in the UI. */
     name: string

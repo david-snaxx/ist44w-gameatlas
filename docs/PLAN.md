@@ -204,9 +204,12 @@ their export files and `Backup`).
 
 A custom format (instead of raw JSON Schema) is easier for the form builder to read and write.
 This format is implemented: `toDefinition()` in `frontend/src/schema/blueprintDraft.js` produces it. Saved files leave out
-empty settings, settings that don't apply to the type, `required: false` and editor-only `uid`s. Property IDs start
-with a letter and may use camelCase; blueprint IDs are `snake_case`. **Stretch goal:**
-generate standard JSON Schema from it for engine-side validation.
+empty settings, settings that don't apply to the type, `required: false` and editor-only `uid`s. The API runs every
+blueprint it saves or sends through the same `toDefinition()`, so a stored blueprint is always in this shape whoever sent
+it (this also undoes MySQL's JSON key sorting on the way out). Property IDs start with a letter and may use camelCase;
+blueprint IDs are `snake_case`. Blueprint, asset and dialogue IDs are at most 64 characters and blueprint and dialogue
+names at most 120, the sizes of their database columns (`MAX_BLUEPRINT_ID_LENGTH` and `MAX_BLUEPRINT_NAME_LENGTH` in `validation.js`).
+**Stretch goal:** generate standard JSON Schema from it for engine-side validation.
 
 ### 5.3 Field type registry
 
@@ -457,7 +460,7 @@ snake_case ID is only unique inside one (§5.6).
 | POST | `/api/projects` | Start an empty project (`{ name }`) with the caller as its first member |
 | GET | `/api/blueprints?projectId=…` | Every blueprint in the project |
 | GET / DELETE | `/api/blueprints/{id}?projectId=…` | One blueprint by its snake_case ID. DELETE takes its assets too |
-| POST / PUT | `/api/blueprints` and `/api/blueprints/{id}` | Create or replace (`{ projectId, id, name, description?, fields }`). PUT bumps `version` |
+| POST / PUT | `/api/blueprints` and `/api/blueprints/{id}` | Create or replace (`{ projectId, id, name, description?, fields }`). PUT bumps `version` when something changed; an unchanged save keeps it |
 | GET | `/api/assets?projectId=…&blueprintId=item` | Every asset in the project, or only one blueprint's |
 | GET / DELETE | `/api/assets/{id}?projectId=…` | One asset by its UUID |
 | POST / PUT | `/api/assets` and `/api/assets/{id}` | Create or replace (`{ projectId, key, schemaId, data }`); validated against the blueprint |
@@ -590,7 +593,7 @@ Goal: users create their own schemas, and the resulting forms behave exactly lik
 - [x] `list` and `object` field types (hierarchical data)
 - [ ] Decide and implement a policy for editing a schema that already has documents (simplest: allow adding optional fields; warn on breaking changes; show "outdated" badge on documents). ✔ So far: assets saved with an older blueprint version show an "Outdated" badge and an editor notice; saving drops values of removed properties. Warnings on breaking changes are not built
 - [ ] Starter templates: Item and Entity (✔ done), Quest
-- [x] ID validation: blueprint IDs are `snake_case` and unique; property IDs start with a letter and are unique at their level
+- [x] ID validation: blueprint IDs are `snake_case`, unique and at most 64 characters; property IDs start with a letter and are unique at their level
 - **Done when:** a user builds a new schema from scratch, creates documents with it, and exports them, all without touching code.
 
 ### Phase 4: Graph editor (done early; API wiring in Phase 2) · Deliverable **Ga.4**
@@ -766,6 +769,7 @@ Add new entries at the bottom. Format: `date · decision · why`.
 - 2026-10-10 · **Users and projects come into scope** (out of the stretch list and the optional Phase 6 auth). A project holds one game's blueprints, assets and dialogues and its members, all as ID arrays on the project, with a user's projects as an array on the user (§5.6) · User decision. A `project_id` column plus a members join table was suggested, since MySQL can enforce rules on columns but not inside JSON arrays; the user preferred the array shapes as easier to picture, at the cost of more code. The four rules in §5.6 (locked transactions, paired writes, access checked on the project, uniqueness checked in code) make the arrays safe at this scale. Order: save and load through the API first, in one seeded project; login and the project picker after that, so Ga.2 doesn't wait on them.
 - 2026-10-10 · **The TypeScript types moved from `frontend/src/types/` to `backend/src/types/`** · User decision: the backend is the only code that uses them, and the frontend stays JavaScript for now. The rule that a type changes together with its shape in the frontend's `schema/` or `data/` code still holds.
 - 2026-10-10 · **Login is a server session with a cookie** (`express-session`), not tokens; `/me` routes take the user from the session · The frontend and API share one origin through Vite's proxy, so an httpOnly cookie needs no CORS and no token handling in the frontend. Login starts a fresh session (`regenerate`) and answers the same for an unknown email and a wrong password. Sessions live in memory until a MySQL store is added before deploying. Sign-up no longer accepts `projectIds`, and updating a user can't change them: membership only changes through project routes, which keep both arrays in step (§5.6, rule 2).
+- 2026-10-14 · **Blueprint route fixes ahead of connecting the frontend.** (1) IDs are at most 64 characters and names at most 120, checked by new shared helpers in `validation.js` (`validateIdFormat`, `validateName`, `validateBlueprintDetails`) that the builder, the asset and dialogue editors and the routes all use · The builder makes an ID from the name with no limit, so a long name gave an ID the 64-character column refused, and the save failed with a 500 instead of an error on the ID box. (2) The API saves and returns blueprints through `toDefinition(toDraft(…))` · The route stored whatever properties it was sent, `uid`s and stray settings included, and §5.2's clean shape is what exports and Phase 5's C# generation read. (3) `PUT /api/blueprints/{id}` only bumps `version` when something changed · A double-clicked or retried save would otherwise mark every asset of the blueprint "Outdated". Also fixed: link properties were refused (the route didn't pass `blueprintIds`), and repeated property IDs weren't caught on the server (the shared check tells properties apart by `uid`s, which saved blueprints don't have).
 
 ---
 

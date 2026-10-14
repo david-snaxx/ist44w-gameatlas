@@ -9,7 +9,7 @@
 export interface Asset {
     /** The internal UUID. Never shown to users and never exported. */
     id: string
-    /** The ID users see: snake_case, unique among its blueprint's assets. Links and exports use this. */
+    /** The ID users see, unique among its blueprint's assets. Links and exports use this. */
     key: string
     /** The ID of the {@link Blueprint} the asset was made from. */
     schemaId: string

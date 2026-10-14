@@ -8,7 +8,7 @@
 export interface Dialogue {
     /** Internal unique ID (a UUID). Never shown to users and never exported. */
     id: string
-    /** The ID users see: snake_case, unique among dialogues. */
+    /** The ID users see, unique among dialogues. */
     key: string
     /** The name displayed in the UI. */
     name: string
@@ -22,7 +22,7 @@ export interface Dialogue {
     nodes: DialogueNode[]
     /** How the steps connect. See: {@link DialogueEdge}. */
     edges: DialogueEdge[]
-    /** ISO 8601 date and time, e.g. "2026-09-13T10:00:00.000Z". */
+    /** ISO 8601 creation time. */
     createdAt: string
     /** Last ISO 8601 update time. */
     updatedAt: string

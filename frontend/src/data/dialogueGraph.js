@@ -1,5 +1,5 @@
 import { toSnakeCase } from '../schema/blueprintDraft.js'
-import { BLUEPRINT_ID_PATTERN, PROPERTY_KEY_PATTERN } from '../schema/validation.js'
+import { PROPERTY_KEY_PATTERN, validateIdFormat, validateName } from '../schema/validation.js'
 import { uniqueKey } from '../utils/uniqueKey.js'
 import { referenceKeysFor } from './assetData.js'
 
@@ -283,16 +283,19 @@ function exportNode(node, edges) {
 /** Name and ID checks. details: { name, key }. Returns { name?, key? }. */
 export function validateDialogueDetails(details, otherKeys) {
   const errors = {}
-  if (!details.name.trim()) {
-    errors.name = 'Enter a name'
+
+  const nameError = validateName(details.name)
+  if (nameError) {
+    errors.name = nameError
   }
-  if (!details.key) {
-    errors.key = 'Enter an ID'
-  } else if (!BLUEPRINT_ID_PATTERN.test(details.key)) {
-    errors.key = 'Start with a lowercase letter, then use lowercase letters, numbers or underscores'
+
+  const keyError = validateIdFormat(details.key)
+  if (keyError) {
+    errors.key = keyError
   } else if (otherKeys.includes(details.key)) {
     errors.key = 'Another dialogue already uses this ID'
   }
+
   return errors
 }
 

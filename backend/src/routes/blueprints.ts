@@ -11,7 +11,8 @@ import {
     withTransaction,
 } from '../projectAccess.ts';
 import type { Blueprint } from '../types/blueprint.ts';
-import { validateFieldDefinition, BLUEPRINT_ID_PATTERN } from '../../../frontend/src/schema/validation.js';
+import { validateBlueprintDetails, validateFieldDefinition } from '../../../frontend/src/schema/validation.js';
+import { toDefinition, toDraft } from '../../../frontend/src/schema/blueprintDraft.js';
 
 /*
  * Blueprints live inside a project, and their `id` (snake_case, e.g. "item") is only unique within one.
@@ -42,7 +43,12 @@ async function getBlueprintRoot(request: Request, response: Response) {
 
     const selectQuery = `SELECT ${BLUEPRINT_COLUMNS} FROM blueprints WHERE project_id = ? ORDER BY name`;
     const [rows] = await db.query<RowDataPacket[]>(selectQuery, [project.id]);
-    response.json(rows);
+
+    const blueprints: Blueprint[] = [];
+    for (const row of rows) {
+        blueprints.push(cleanBlueprint(row));
+    }
+    response.json(blueprints);
 }
 
 /**
@@ -81,6 +87,9 @@ async function postBlueprint(request: Request, response: Response) {
         return response.status(400).json({ errors: problems });
     }
 
+    // Only the clean shape is saved: no editor-only `uid`s, no settings a property's type doesn't use
+    const blueprint = cleanBlueprint({ id: id, name: name.trim(), description: description, version: 1, fields: fields });
+
     const rowId = randomUUID();
     const now = new Date();
     const insertQuery = `INSERT INTO blueprints (id, project_id, schema_key, name, description, kind, version, fields, created_at, updated_at)
@@ -92,10 +101,10 @@ async function postBlueprint(request: Request, response: Response) {
             await connection.query(insertQuery, [
                 rowId,
                 project.id,
-                id,
-                name.trim(),
-                trimmedDescription(description),
-                JSON.stringify(fields),
+                blueprint.id,
+                blueprint.name,
+                blueprint.description ?? null, // a clean blueprint has no description when it's empty
+                JSON.stringify(blueprint.fields),
                 now,
                 now,
             ]);
@@ -108,12 +117,13 @@ async function postBlueprint(request: Request, response: Response) {
         throw error;
     }
 
-    response.status(201).json(await findBlueprint(project.id, id));
+    response.status(201).json(await findBlueprint(project.id, blueprint.id));
 }
 
 /**
  * PUT /blueprints/:id
- * Body: { projectId, name, description?, fields }. The ID can't change here, and the version goes up by one.
+ * Body: { projectId, name, description?, fields }. The ID can't change here. The version goes up by one when
+ * something changed, the same as in the builder.
  */
 async function putBlueprint(request: Request<{ id: string }>, response: Response) {
     const { projectId, name, description, fields } = request.body ?? {};
@@ -137,12 +147,26 @@ async function putBlueprint(request: Request<{ id: string }>, response: Response
         return response.status(404).json({ message: 'Blueprint not found' });
     }
 
+    // The blueprint as this save would leave it, in the same clean shape findBlueprint() gives back
+    const updated = cleanBlueprint({
+        id: existing.id,
+        name: name.trim(),
+        description: description,
+        version: existing.version,
+        fields: fields,
+    });
+
+    // Nothing changed (a double-clicked or retried save): keep the version, so its assets don't turn "Outdated"
+    if (JSON.stringify(updated) === JSON.stringify(existing)) {
+        return response.json(existing);
+    }
+
     const updateQuery = `UPDATE blueprints SET name = ?, description = ?, fields = ?, version = version + 1, updated_at = ?
                          WHERE project_id = ? AND schema_key = ?`;
     await db.query(updateQuery, [
-        name.trim(),
-        trimmedDescription(description),
-        JSON.stringify(fields),
+        updated.name,
+        updated.description ?? null, // a clean blueprint has no description when it's empty
+        JSON.stringify(updated.fields),
         new Date(),
         project.id,
         request.params.id,
@@ -184,11 +208,13 @@ async function deleteBlueprint(request: Request<{ id: string }>, response: Respo
 // region Helpers
 /**
  * SQL columns that make up a {@link Blueprint}. `schema_key` is what the API calls `id`; the row's own
- * UUID stays inside the database.
+ * UUID stays inside the database. Rows go through {@link cleanBlueprint} before they're sent.
  */
 const BLUEPRINT_COLUMNS = 'schema_key AS id, name, description, kind, version, fields';
 
-const MAX_BLUEPRINT_NAME_LENGTH = 120;
+function cleanBlueprint(blueprint: object): Blueprint {
+    return toDefinition(toDraft(blueprint)) as Blueprint;
+}
 
 /**
  * Returns a single blueprint by its snake_case ID within a project, or undefined when there is none.
@@ -196,7 +222,10 @@ const MAX_BLUEPRINT_NAME_LENGTH = 120;
 async function findBlueprint(projectId: string, id: string): Promise<Blueprint | undefined> {
     const selectQuery = `SELECT ${BLUEPRINT_COLUMNS} FROM blueprints WHERE project_id = ? AND schema_key = ?`;
     const [rows] = await db.query<RowDataPacket[]>(selectQuery, [projectId, id]);
-    return rows[0] as Blueprint | undefined;
+    if (rows.length === 0) {
+        return undefined;
+    }
+    return cleanBlueprint(rows[0]);
 }
 
 /**
@@ -235,20 +264,8 @@ async function findAssetIdsOfBlueprint(connection: PoolConnection, blueprintRowI
     return ids;
 }
 
-/** '' and whitespace both mean "no description", which is stored as NULL. */
-function trimmedDescription(description: unknown): string | null {
-    if (typeof description !== 'string' || description.trim() === '') {
-        return null;
-    }
-    return description.trim();
-}
-
 /**
- * Checks a blueprint sent by a client. Returns one entry per problem, in the shape the form shows inline:
- * [{ path, message }] (PLAN.md §6). An empty list means there's nothing wrong.
- *
- * Each property goes through validateFieldDefinition() from the frontend, so the browser and the server
- * agree about what a valid property is.
+ * Checks a blueprint sent by a client. Returns one entry per problem. An empty list means there's nothing wrong.
  */
 function validateBlueprintBody(
     body: { id: unknown; name: unknown; description: unknown; fields: unknown },
@@ -256,20 +273,16 @@ function validateBlueprintBody(
 ) {
     const problems: { path: string; message: string }[] = [];
 
-    if (typeof body.id !== 'string' || !BLUEPRINT_ID_PATTERN.test(body.id)) {
-        problems.push({
-            path: 'id',
-            message: 'Start with a lowercase letter, then use lowercase letters, numbers or underscores',
-        });
-    } else if (takenIds.includes(body.id)) {
-        // The UNIQUE index would refuse this too, but saying it here puts the error on the ID box
-        problems.push({ path: 'id', message: 'Another blueprint in this project already uses this ID' });
+    if (typeof body.id !== 'string' || typeof body.name !== 'string') {
+        problems.push({ path: 'id', message: 'id and name must be strings' });
+        return problems;
     }
-    if (typeof body.name !== 'string' || body.name.trim() === '') {
-        problems.push({ path: 'name', message: 'Enter a name' });
-    } else if (body.name.trim().length > MAX_BLUEPRINT_NAME_LENGTH) {
-        problems.push({ path: 'name', message: `Use ${MAX_BLUEPRINT_NAME_LENGTH} characters or fewer` });
+
+    const detailErrors: Record<string, string> = validateBlueprintDetails({ id: body.id, name: body.name }, takenIds);
+    for (const path of Object.keys(detailErrors)) {
+        problems.push({ path: path, message: detailErrors[path] });
     }
+
     if (body.description !== undefined && typeof body.description !== 'string') {
         problems.push({ path: 'description', message: 'description must be a string' });
     }
@@ -285,7 +298,7 @@ function validateBlueprintBody(
 
     // A link property may point at any other blueprint in the project, or at this one (the builder offers the same)
     const linkTargetIds = [...takenIds];
-    if (typeof body.id === 'string' && body.id !== '') {
+    if (body.id !== '') {
         linkTargetIds.push(body.id);
     }
 
