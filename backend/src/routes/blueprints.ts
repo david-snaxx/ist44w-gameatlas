@@ -304,17 +304,27 @@ function collectFieldProblems(
     pathPrefix: string,
     blueprintIds: string[],
 ): void {
+    // validateFieldDefinition() can't spot a repeated property ID here: it tells properties apart by the
+    // builder's `uid`s, which saved blueprints don't have. So this level's repeats are found up front.
+    const repeatedKeys = findRepeatedKeys(fields);
+
     for (let index = 0; index < fields.length; index++) {
         const field = fields[index];
         const fieldPath = `${pathPrefix}.${index}`;
 
         // validateFieldDefinition is plain JavaScript: setting name -> message
         const fieldErrors: Record<string, string> = validateFieldDefinition(field, {
-            siblings: field,
+            siblings: fields,
             blueprintIds: blueprintIds,
         });
         for (const settingName of Object.keys(fieldErrors)) {
             problems.push({ path: `${fieldPath}.${settingName}`, message: fieldErrors[settingName] });
+        }
+
+        // Every property sharing the ID gets the message, like in the builder. Skipped when the ID already has an error.
+        const key = (field as { key?: unknown }).key;
+        if (!fieldErrors.key && typeof key === 'string' && repeatedKeys.includes(key)) {
+            problems.push({ path: `${fieldPath}.key`, message: 'Another property at this level already uses this ID' });
         }
 
         const group = field as { type?: string; fields?: unknown };
@@ -322,5 +332,22 @@ function collectFieldProblems(
             collectFieldProblems(problems, group.fields, `${fieldPath}.fields`, blueprintIds);
         }
     }
+}
+
+/** The property IDs used more than once among `fields`. Only this level: a group's own properties are checked separately. */
+function findRepeatedKeys(fields: unknown[]): string[] {
+    const seen: string[] = [];
+    const repeated: string[] = [];
+    for (const field of fields) {
+        const key = (field as { key?: unknown }).key;
+        if (typeof key !== 'string') {
+            continue;
+        }
+        if (seen.includes(key) && !repeated.includes(key)) {
+            repeated.push(key);
+        }
+        seen.push(key);
+    }
+    return repeated;
 }
 // endregion
