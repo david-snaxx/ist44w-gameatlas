@@ -1,13 +1,14 @@
 import express from 'express';
 import type { Request, Response } from 'express';
-import type { RowDataPacket } from 'mysql2/promise';
+import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
 import { randomUUID } from 'node:crypto';
 import { db } from '../db.ts';
 import { addToProjectList, isDuplicateKey, openProject, removeFromProjectList, withTransaction } from '../projectAccess.ts';
 import type { Asset } from '../types/asset.ts';
 import type { Blueprint } from '../types/blueprint.ts';
 import { validateAssetKey, validateValues } from '../../../frontend/src/schema/validation.js';
-import { referenceKeysFor, toFormValues } from '../../../frontend/src/data/assetData.js';
+import { referenceKeysFor, replaceReferences, toFormValues } from '../../../frontend/src/data/assetData.js';
+import { renameAssetInDialogue } from '../../../frontend/src/data/dialogueGraph.js';
 
 /*
  * Assets live inside a project and are made from one blueprint. Their `id` is the row's UUID, so
@@ -115,6 +116,8 @@ async function postAsset(request: Request, response: Response) {
 /**
  * PUT /assets/:id
  * Body: { projectId, key, data }. Saving re-stamps the asset with the blueprint's current version.
+ * A `key` that differs from the saved one renames the asset, and every link to it follows in the same
+ * transaction: in other assets, in dialogues, and in the asset's own data.
  */
 async function putAsset(request: Request<{ id: string }>, response: Response) {
     const { projectId, key, data } = request.body ?? {};
@@ -134,14 +137,34 @@ async function putAsset(request: Request<{ id: string }>, response: Response) {
         return response.status(409).json({ message: "This asset's blueprint no longer exists" });
     }
 
-    const problems = await validateAssetBody(project.id, blueprint, key, data, request.params.id);
+    const isRenamed = typeof key === 'string' && key !== existing.key;
+
+    // Links from the asset to itself follow its new ID, like the links in other assets and dialogues do
+    let newData = data;
+    if (isRenamed && isPlainObject(data)) {
+        newData = replaceReferences(blueprint.fields, data, blueprint.id, existing.key, key);
+    }
+
+    const problems = await validateAssetBody(project.id, blueprint, key, newData, existing.id);
     if (problems.length > 0) {
         return response.status(400).json({ errors: problems });
     }
 
     const updateQuery = `UPDATE assets SET asset_key = ?, schema_version = ?, data = ?, updated_at = ? WHERE id = ?`;
     try {
-        await db.query(updateQuery, [key, blueprint.version, JSON.stringify(data), new Date(), request.params.id]);
+        // The asset and every link to it are one change, so a rename never leaves links pointing at the old ID
+        await withTransaction(async (connection) => {
+            await connection.query(updateQuery, [
+                key,
+                blueprint.version,
+                JSON.stringify(newData),
+                new Date(),
+                existing.id,
+            ]);
+            if (isRenamed) {
+                await renameLinksToAsset(connection, project.id, existing.id, blueprint.id, existing.key, key);
+            }
+        });
     } catch (error) {
         if (isDuplicateKey(error)) {
             return response.status(409).json({ message: 'Another asset of this blueprint already uses this ID' });
@@ -237,7 +260,7 @@ async function findBlueprintRow(projectId: string, schemaId: unknown): Promise<B
  *
  * The values go through the frontend's own validateValues(), so the browser and the server agree about
  * what a valid asset is. `currentAssetId` is the asset being updated, or null when creating one, so its
- * own ID doesn't count as a clash.
+ * own ID doesn't count as a clash, and links to it are checked against the ID it's being saved with.
  */
 async function validateAssetBody(
     projectId: string,
@@ -259,9 +282,18 @@ async function validateAssetBody(
         problems.push({ path: 'key', message: keyError });
     }
 
-    // What links in this asset are allowed to point at: every blueprint's assets in this project
+    // What links in this asset are allowed to point at: every blueprint's assets in this project. The asset
+    // being updated counts under its new ID, since a rename moves its links to itself to the new ID too.
     const blueprints = await findBlueprintsForLinks(projectId);
-    const assets = await findAssetsForLinks(projectId);
+    const savedAssets = await findAssetsForLinks(projectId);
+    const assets: { schemaId: string; key: string }[] = [];
+    for (const asset of savedAssets) {
+        if (asset.id === currentAssetId && typeof key === 'string') {
+            assets.push({ schemaId: asset.schemaId, key: key });
+        } else {
+            assets.push(asset);
+        }
+    }
     const referenceKeys = referenceKeysFor(blueprints, assets);
 
     // validateValues() expects form values (numbers as text), which is what toFormValues() makes from saved data
@@ -290,12 +322,53 @@ async function findBlueprintsForLinks(projectId: string) {
     return rows as { id: string; fields: Blueprint['fields'] }[];
 }
 
-/** Every asset in the project, as referenceKeysFor() wants them: [{ schemaId, key }]. */
+/** Every asset in the project, as referenceKeysFor() wants them: [{ schemaId, key }], plus each one's UUID. */
 async function findAssetsForLinks(projectId: string) {
-    const selectQuery = `SELECT b.schema_key AS schemaId, a.asset_key AS \`key\` FROM assets a
+    const selectQuery = `SELECT a.id, b.schema_key AS schemaId, a.asset_key AS \`key\` FROM assets a
                          JOIN blueprints b ON b.id = a.blueprint_id WHERE a.project_id = ?`;
     const [rows] = await db.query<RowDataPacket[]>(selectQuery, [projectId]);
-    return rows as { schemaId: string; key: string }[];
+    return rows as { id: string; schemaId: string; key: string }[];
+}
+
+/**
+ * Points every link to asset `fromKey` of blueprint `blueprintId` at `toKey` instead: link properties in the
+ * project's other assets (of any blueprint, the renamed asset's own included), and speakers and given items in
+ * its dialogues. Nothing is validated here, so a problem elsewhere in a row never blocks the rename. Only rows
+ * that change are written, and only their links: nobody edited them, so their updatedAt and an asset's
+ * schemaVersion stay as they were. Runs in the caller's transaction, after the asset itself is renamed.
+ */
+async function renameLinksToAsset(
+    connection: PoolConnection,
+    projectId: string,
+    assetId: string,
+    blueprintId: string,
+    fromKey: string,
+    toKey: string,
+): Promise<void> {
+    // Each asset comes with its own blueprint's properties, which say where its links are
+    const assetQuery = `SELECT a.id, a.data, b.fields FROM assets a JOIN blueprints b ON b.id = a.blueprint_id
+                        WHERE a.project_id = ? AND a.id <> ?`;
+    const [assetRows] = await connection.query<RowDataPacket[]>(assetQuery, [projectId, assetId]);
+    for (const row of assetRows) {
+        const renamedData = replaceReferences(row.fields, row.data, blueprintId, fromKey, toKey);
+        if (JSON.stringify(renamedData) !== JSON.stringify(row.data)) {
+            await connection.query(`UPDATE assets SET data = ? WHERE id = ?`, [JSON.stringify(renamedData), row.id]);
+        }
+    }
+
+    // renameAssetInDialogue() gives back null when the dialogue doesn't use the asset, and only changes `nodes`
+    const dialogueQuery = `SELECT id, speaker_blueprint AS speakerBlueprint, item_blueprint AS itemBlueprint, nodes
+                           FROM dialogues WHERE project_id = ?`;
+    const [dialogueRows] = await connection.query<RowDataPacket[]>(dialogueQuery, [projectId]);
+    for (const row of dialogueRows) {
+        const renamed = renameAssetInDialogue(row, blueprintId, fromKey, toKey);
+        if (renamed) {
+            await connection.query(`UPDATE dialogues SET nodes = ? WHERE id = ?`, [
+                JSON.stringify(renamed.nodes),
+                row.id,
+            ]);
+        }
+    }
 }
 
 /** True for a plain object like { … } (not null, not an array). */
