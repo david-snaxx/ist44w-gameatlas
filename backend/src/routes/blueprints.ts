@@ -12,7 +12,12 @@ import {
 } from '../projectAccess.ts';
 import type { Blueprint } from '../types/blueprint.ts';
 import { validateBlueprintDetails, validateFieldDefinition } from '../../../frontend/src/schema/validation.js';
-import { toDefinition, toDraft } from '../../../frontend/src/schema/blueprintDraft.js';
+import {
+    renameBlueprintLinks,
+    toDefinition,
+    toDraft,
+    usesBlueprint,
+} from '../../../frontend/src/schema/blueprintDraft.js';
 
 /*
  * Blueprints live inside a project, and their `id` (snake_case, e.g. "item") is only unique within one.
@@ -41,14 +46,7 @@ async function getBlueprintRoot(request: Request, response: Response) {
     }
     const project = access.project;
 
-    const selectQuery = `SELECT ${BLUEPRINT_COLUMNS} FROM blueprints WHERE project_id = ? ORDER BY name`;
-    const [rows] = await db.query<RowDataPacket[]>(selectQuery, [project.id]);
-
-    const blueprints: Blueprint[] = [];
-    for (const row of rows) {
-        blueprints.push(cleanBlueprint(row));
-    }
-    response.json(blueprints);
+    response.json(await findBlueprints(project.id));
 }
 
 /**
@@ -122,38 +120,49 @@ async function postBlueprint(request: Request, response: Response) {
 
 /**
  * PUT /blueprints/:id
- * Body: { projectId, name, description?, fields }. The ID can't change here. The version goes up by one when
- * something changed, the same as in the builder.
  */
 async function putBlueprint(request: Request<{ id: string }>, response: Response) {
-    const { projectId, name, description, fields } = request.body ?? {};
+    const { projectId, id, name, description, fields } = request.body ?? {};
     const access = await openProject(request, projectId);
     if (!access.project) {
         return response.status(access.status).json({ message: access.message });
     }
     const project = access.project;
+    const currentId = request.params.id;
 
-    const takenIds = await findBlueprintIds(project.id, request.params.id);
+    // leaving id out keeps the blueprint's current ID
+    let newId = id;
+    if (newId === undefined) {
+        newId = currentId;
+    }
+
+    // links from this blueprint to itself follow its new ID, like the other blueprints' links do
+    let newFields = fields;
+    if (typeof newId === 'string' && newId !== currentId && Array.isArray(fields)) {
+        newFields = renameBlueprintLinks(fields, currentId, newId);
+    }
+
+    const takenIds = await findBlueprintIds(project.id, currentId);
     const problems = validateBlueprintBody(
-        { id: request.params.id, name: name, description: description, fields: fields },
+        { id: newId, name: name, description: description, fields: newFields },
         takenIds,
     );
     if (problems.length > 0) {
         return response.status(400).json({ errors: problems });
     }
 
-    const existing = await findBlueprint(project.id, request.params.id);
+    const existing = await findBlueprint(project.id, currentId);
     if (!existing) {
         return response.status(404).json({ message: 'Blueprint not found' });
     }
 
     // The blueprint as this save would leave it, in the same clean shape findBlueprint() gives back
     const updated = cleanBlueprint({
-        id: existing.id,
+        id: newId,
         name: name.trim(),
         description: description,
         version: existing.version,
-        fields: fields,
+        fields: newFields,
     });
 
     // Nothing changed (a double-clicked or retried save): keep the version, so its assets don't turn "Outdated"
@@ -161,18 +170,31 @@ async function putBlueprint(request: Request<{ id: string }>, response: Response
         return response.json(existing);
     }
 
-    const updateQuery = `UPDATE blueprints SET name = ?, description = ?, fields = ?, version = version + 1, updated_at = ?
+    const updateQuery = `UPDATE blueprints SET schema_key = ?, name = ?, description = ?, fields = ?, version = version + 1, updated_at = ?
                          WHERE project_id = ? AND schema_key = ?`;
-    await db.query(updateQuery, [
-        updated.name,
-        updated.description ?? null, // a clean blueprint has no description when it's empty
-        JSON.stringify(updated.fields),
-        new Date(),
-        project.id,
-        request.params.id,
-    ]);
+    try {
+        await withTransaction(async (connection) => {
+            await connection.query(updateQuery, [
+                updated.id,
+                updated.name,
+                updated.description ?? null,
+                JSON.stringify(updated.fields),
+                new Date(),
+                project.id,
+                currentId,
+            ]);
+            if (updated.id !== currentId) {
+                await renameLinksToBlueprint(connection, project.id, currentId, updated.id);
+            }
+        });
+    } catch (error) {
+        if (isDuplicateKey(error)) {
+            return response.status(409).json({ message: 'Another blueprint in this project already uses this ID' });
+        }
+        throw error;
+    }
 
-    response.json(await findBlueprint(project.id, request.params.id));
+    response.json(await findBlueprint(project.id, updated.id));
 }
 
 /**
@@ -212,8 +234,23 @@ async function deleteBlueprint(request: Request<{ id: string }>, response: Respo
  */
 const BLUEPRINT_COLUMNS = 'schema_key AS id, name, description, kind, version, fields';
 
-function cleanBlueprint(blueprint: object): Blueprint {
+/** The blueprint in the clean saved shape (PLAN.md §5.2). Also used by PUT /projects/:id/contents. */
+export function cleanBlueprint(blueprint: object): Blueprint {
     return toDefinition(toDraft(blueprint)) as Blueprint;
+}
+
+/**
+ * Every blueprint in a project, sorted by name. Also used by PUT /projects/:id/contents to answer with what it saved.
+ */
+export async function findBlueprints(projectId: string): Promise<Blueprint[]> {
+    const selectQuery = `SELECT ${BLUEPRINT_COLUMNS} FROM blueprints WHERE project_id = ? ORDER BY name`;
+    const [rows] = await db.query<RowDataPacket[]>(selectQuery, [projectId]);
+
+    const blueprints: Blueprint[] = [];
+    for (const row of rows) {
+        blueprints.push(cleanBlueprint(row));
+    }
+    return blueprints;
 }
 
 /**
@@ -250,6 +287,37 @@ async function findBlueprintRowId(projectId: string, id: string): Promise<string
     const selectQuery = `SELECT id FROM blueprints WHERE project_id = ? AND schema_key = ?`;
     const [rows] = await db.query<RowDataPacket[]>(selectQuery, [projectId, id]);
     return rows[0]?.id;
+}
+
+/**
+ * Points everything in the project that names blueprint `fromId` at `toId` instead: link properties in the other
+ * blueprints, and the dialogues' speaker and item blueprints. Assets need nothing, because they're tied to the
+ * blueprint's row UUID, which doesn't change. Runs in the caller's transaction, after the blueprint itself is renamed.
+ */
+async function renameLinksToBlueprint(
+    connection: PoolConnection,
+    projectId: string,
+    fromId: string,
+    toId: string,
+): Promise<void> {
+    // Link properties sit inside each blueprint's `fields` JSON, so every blueprint that uses one is rewritten
+    const selectQuery = `SELECT id, fields FROM blueprints WHERE project_id = ? AND schema_key <> ?`;
+    const [rows] = await connection.query<RowDataPacket[]>(selectQuery, [projectId, toId]);
+    for (const row of rows) {
+        if (usesBlueprint(row.fields, fromId)) {
+            const renamedFields = renameBlueprintLinks(row.fields, fromId, toId);
+            await connection.query(`UPDATE blueprints SET fields = ? WHERE id = ?`, [
+                JSON.stringify(renamedFields),
+                row.id,
+            ]);
+        }
+    }
+
+    // A dialogue names its blueprints in plain columns, so one UPDATE for each column is enough
+    const speakerQuery = `UPDATE dialogues SET speaker_blueprint = ? WHERE project_id = ? AND speaker_blueprint = ?`;
+    await connection.query(speakerQuery, [toId, projectId, fromId]);
+    const itemQuery = `UPDATE dialogues SET item_blueprint = ? WHERE project_id = ? AND item_blueprint = ?`;
+    await connection.query(itemQuery, [toId, projectId, fromId]);
 }
 
 /** The UUIDs of every asset made from a blueprint, so they can leave the project's asset list too. */

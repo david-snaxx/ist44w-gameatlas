@@ -356,6 +356,31 @@ export function usesBlueprint(fields = [], blueprintId) {
   return false
 }
 
+/**
+ * Copies of the properties with every link to blueprint `fromId` (at any depth, list items too) pointing at
+ * `toId` instead. Used when a blueprint's ID changes. The properties passed in are not changed.
+ */
+export function renameBlueprintLinks(fields = [], fromId, toId) {
+  const renamed = []
+  for (const field of fields) {
+    const copy = { ...field }
+    if (copy.type === 'reference' && copy.targetSchema === fromId) {
+      copy.targetSchema = toId
+    }
+    if (copy.type === 'list') {
+      const itemType = copy.itemType
+      if (itemType?.type === 'reference' && itemType.targetSchema === fromId) {
+        copy.itemType = { ...itemType, targetSchema: toId }
+      }
+    }
+    if (copy.type === 'object' && Array.isArray(copy.fields)) {
+      copy.fields = renameBlueprintLinks(copy.fields, fromId, toId)
+    }
+    renamed.push(copy)
+  }
+  return renamed
+}
+
 // ---------- Text helpers ----------
 
 // The words in a piece of text, with accents removed: "Café crème!" -> ["Cafe", "creme"]

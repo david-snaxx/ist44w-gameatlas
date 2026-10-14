@@ -36,18 +36,11 @@ async function getAssetRoot(request: Request, response: Response) {
     }
     const project = access.project;
 
-    const blueprintId = request.query.blueprintId;
-    let selectQuery = `SELECT ${ASSET_COLUMNS} FROM assets a JOIN blueprints b ON b.id = a.blueprint_id
-                       WHERE a.project_id = ?`;
-    const values: string[] = [project.id];
-    if (typeof blueprintId === 'string' && blueprintId !== '') {
-        selectQuery = `${selectQuery} AND b.schema_key = ?`;
-        values.push(blueprintId);
+    let blueprintId: string | null = null;
+    if (typeof request.query.blueprintId === 'string' && request.query.blueprintId !== '') {
+        blueprintId = request.query.blueprintId;
     }
-    selectQuery = `${selectQuery} ORDER BY a.asset_key`;
-
-    const [rows] = await db.query<RowDataPacket[]>(selectQuery, values);
-    response.json(rows);
+    response.json(await findAssets(project.id, blueprintId));
 }
 
 /**
@@ -197,6 +190,24 @@ interface BlueprintRow {
     id: string;
     version: number;
     fields: Blueprint['fields'];
+}
+
+/**
+ * Every asset in a project, sorted by ID, or only one blueprint's when `blueprintId` (its snake_case ID) is given.
+ * Also used by PUT /projects/:id/contents to answer with what it saved.
+ */
+export async function findAssets(projectId: string, blueprintId: string | null): Promise<Asset[]> {
+    let selectQuery = `SELECT ${ASSET_COLUMNS} FROM assets a JOIN blueprints b ON b.id = a.blueprint_id
+                       WHERE a.project_id = ?`;
+    const values: string[] = [projectId];
+    if (blueprintId !== null) {
+        selectQuery = `${selectQuery} AND b.schema_key = ?`;
+        values.push(blueprintId);
+    }
+    selectQuery = `${selectQuery} ORDER BY a.asset_key`;
+
+    const [rows] = await db.query<RowDataPacket[]>(selectQuery, values);
+    return rows as Asset[];
 }
 
 /**

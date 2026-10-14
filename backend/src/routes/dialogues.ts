@@ -43,9 +43,7 @@ async function getDialogueRoot(request: Request, response: Response) {
     }
     const project = access.project;
 
-    const selectQuery = `SELECT ${DIALOGUE_COLUMNS} FROM dialogues WHERE project_id = ? ORDER BY name`;
-    const [rows] = await db.query<RowDataPacket[]>(selectQuery, [project.id]);
-    response.json(rows);
+    response.json(await findDialogues(project.id));
 }
 
 /**
@@ -205,6 +203,15 @@ const DIALOGUE_COLUMNS = `id, dialogue_key AS \`key\`, name, description, speake
                           updated_at AS updatedAt`;
 
 /**
+ * Every dialogue in a project, sorted by name. Also used by PUT /projects/:id/contents to answer with what it saved.
+ */
+export async function findDialogues(projectId: string): Promise<Dialogue[]> {
+    const selectQuery = `SELECT ${DIALOGUE_COLUMNS} FROM dialogues WHERE project_id = ? ORDER BY name`;
+    const [rows] = await db.query<RowDataPacket[]>(selectQuery, [projectId]);
+    return rows as Dialogue[];
+}
+
+/**
  * Returns a single dialogue by its UUID, or undefined when there is none in this project.
  */
 async function findDialogue(projectId: string, id: string): Promise<Dialogue | undefined> {
@@ -276,8 +283,11 @@ async function findAssetsForLinks(projectId: string) {
     return rows as { schemaId: string; key: string }[];
 }
 
-/** Optional text columns are never null in a dialogue: a missing value is saved as ''. */
-function asText(value: unknown): string {
+/**
+ * Optional text columns are never null in a dialogue: a missing value is saved as ''.
+ * PUT /projects/:id/contents saves dialogues the same way.
+ */
+export function asText(value: unknown): string {
     if (typeof value !== 'string') {
         return '';
     }

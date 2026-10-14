@@ -458,9 +458,10 @@ snake_case ID is only unique inside one (§5.6).
 | GET | `/api/projects` | Every project the logged-in user is a member of |
 | GET / PUT / DELETE | `/api/projects/{id}` | One project. PUT renames it; DELETE removes it and everything in it |
 | POST | `/api/projects` | Start an empty project (`{ name }`) with the caller as its first member |
+| PUT | `/api/projects/{id}/contents` | Replace everything in the project at once (`{ blueprints, assets, dialogues }`, in their saved shapes, as a backup holds them): restore a backup, reset to the examples, delete all, fill a new project. Answers the new contents. Up to 20 MB, where every other route takes 100 KB |
 | GET | `/api/blueprints?projectId=…` | Every blueprint in the project |
 | GET / DELETE | `/api/blueprints/{id}?projectId=…` | One blueprint by its snake_case ID. DELETE takes its assets too |
-| POST / PUT | `/api/blueprints` and `/api/blueprints/{id}` | Create or replace (`{ projectId, id, name, description?, fields }`). PUT bumps `version` when something changed; an unchanged save keeps it |
+| POST / PUT | `/api/blueprints` and `/api/blueprints/{id}` | Create or replace (`{ projectId, id, name, description?, fields }`). PUT bumps `version` when something changed; an unchanged save keeps it. On PUT, `{id}` is the current ID and the body's `id` a new one (leave it out to keep the ID): link properties in every blueprint, this one included, and dialogues' speaker and item blueprints follow it in the same transaction, and assets follow by themselves |
 | GET | `/api/assets?projectId=…&blueprintId=item` | Every asset in the project, or only one blueprint's |
 | GET / DELETE | `/api/assets/{id}?projectId=…` | One asset by its UUID |
 | POST / PUT | `/api/assets` and `/api/assets/{id}` | Create or replace (`{ projectId, key, schemaId, data }`); validated against the blueprint |
@@ -481,6 +482,17 @@ UUID stays inside the database and is what `projects.blueprint_ids` holds.
 blueprint), and the routes check that in code so the answer is an inline `{ errors: [{ path, message }] }` on the
 `id` or `key` box, which is what the form can show. The `UNIQUE` index is still there and still turns into a 409,
 but only for a genuine race between two saves — in normal use it never fires.
+
+**Replacing a project's contents is all or nothing.** `PUT /api/projects/{id}/contents` first checks the set
+against itself, never against the database, with `checkContents()` from `frontend/src/data/backupFile.js`: blueprints
+need a valid name, a valid ID no other blueprint in the set uses, and valid properties (a link may name a blueprint
+that isn't in the set); assets need a valid ID no other asset of the same blueprint uses, and their blueprint in the
+set; dialogues need a valid name and an unused, valid ID. Problems the editors already show are allowed: links to
+missing blueprints or assets, asset values that break their rules, unfinished dialogue trees. The first problem
+answers 400 `{ message }` and nothing is written. Otherwise one transaction deletes the old rows, inserts the new ones
+with fresh UUIDs (the `id`s sent for assets and dialogues are ignored) and rebuilds the project's three ID lists.
+Blueprint versions, asset `schemaVersion`s and asset and dialogue timestamps are kept; a missing or unreadable
+timestamp becomes the current time, and blueprints, whose saved shape has none, start now.
 
 **A dialogue can be saved unfinished**, like in the editor, so the tree checks don't refuse a write: `GET
 /api/dialogues/{id}` returns them alongside the dialogue as `problems`. Only the name and ID are strict enough
@@ -516,7 +528,7 @@ someone else's account by changing an ID in the URL:
 | GET / PUT / DELETE | `/api/users/{id}` | For testing; become `/me` versions (PUT changes only email and display name; 409 when the email is taken) |
 | GET | `/api/users` | Testing only (shows every email); remove before deploying |
 
-Other errors (400, 401, 404, 409, 500) answer `{ "message": "…" }`. `email` must be a string (400 otherwise). Sign-up rules: `password` is 8 characters or more and at most 72 bytes (bcrypt
+Other errors (400, 401, 404, 409, 413, 500) answer `{ "message": "…" }`. A body over its route's size limit answers 413, and one that isn't JSON answers 400. `email` must be a string (400 otherwise). Sign-up rules: `password` is 8 characters or more and at most 72 bytes (bcrypt
 ignores anything after that); `displayName` is 1–64 characters, saved without spaces at either end (the same rule on update).
 Login only checks that the password is a string, so accounts made under older rules can still log in. One account per
 email is enforced by the `UNIQUE` index on `users.email`: the routes turn MySQL's `ER_DUP_ENTRY` into the 409.
@@ -770,6 +782,8 @@ Add new entries at the bottom. Format: `date · decision · why`.
 - 2026-10-10 · **The TypeScript types moved from `frontend/src/types/` to `backend/src/types/`** · User decision: the backend is the only code that uses them, and the frontend stays JavaScript for now. The rule that a type changes together with its shape in the frontend's `schema/` or `data/` code still holds.
 - 2026-10-10 · **Login is a server session with a cookie** (`express-session`), not tokens; `/me` routes take the user from the session · The frontend and API share one origin through Vite's proxy, so an httpOnly cookie needs no CORS and no token handling in the frontend. Login starts a fresh session (`regenerate`) and answers the same for an unknown email and a wrong password. Sessions live in memory until a MySQL store is added before deploying. Sign-up no longer accepts `projectIds`, and updating a user can't change them: membership only changes through project routes, which keep both arrays in step (§5.6, rule 2).
 - 2026-10-14 · **Blueprint route fixes ahead of connecting the frontend.** (1) IDs are at most 64 characters and names at most 120, checked by new shared helpers in `validation.js` (`validateIdFormat`, `validateName`, `validateBlueprintDetails`) that the builder, the asset and dialogue editors and the routes all use · The builder makes an ID from the name with no limit, so a long name gave an ID the 64-character column refused, and the save failed with a 500 instead of an error on the ID box. (2) The API saves and returns blueprints through `toDefinition(toDraft(…))` · The route stored whatever properties it was sent, `uid`s and stray settings included, and §5.2's clean shape is what exports and Phase 5's C# generation read. (3) `PUT /api/blueprints/{id}` only bumps `version` when something changed · A double-clicked or retried save would otherwise mark every asset of the blueprint "Outdated". Also fixed: link properties were refused (the route didn't pass `blueprintIds`), and repeated property IDs weren't caught on the server (the shared check tells properties apart by `uid`s, which saved blueprints don't have).
+- 2026-10-14 · **A blueprint's ID can be changed through the API**: `PUT /api/blueprints/{id}` takes the new ID as `id` in the body, and one transaction renames the row and moves every link to it (`renameLinksToBlueprint` in `routes/blueprints.ts`, using the new shared `renameBlueprintLinks()` in `blueprintDraft.js`). Assets need nothing, since they point at the blueprint's row UUID; only the renamed blueprint's version goes up · User decision: keep the builder's rename feature (2026-09-14 entry) instead of locking IDs after the first save. Before this, the route ignored a new ID without saying so. The builder still doesn't move other blueprints' link properties when it renames one in localStorage; that goes away when it saves through the API.
+- 2026-10-14 · **`PUT /api/projects/{id}/contents` replaces a whole project in one transaction**, for the Settings page's restore, reset to examples and delete all, and for filling a new project (§6). It checks the set against itself with the new shared `checkContents()`, refuses the whole request on the first problem, keeps versions and timestamps, gives every row a fresh UUID and rebuilds the project's ID lists · The API could only save one item per request, so replacing everything would have meant hundreds of requests with no way to undo a failure halfway. The checks are structure only and allow what the editors already show (links to missing blueprints or assets, bad values, unfinished trees), since real projects contain them and the editors show them to fix. Blueprint names are checked too, though the request only named IDs: the column holds 120 characters and every other blueprint route requires a name. To share the checks, `frontend/src/data/backup.js` was split: the file format and checks moved to `backupFile.js` (plain logic the backend imports), and `backup.js` keeps the functions that change the stores. `parseBackupFile` doesn't run `checkContents()` yet, so restoring in the browser accepts what it did before; the Settings page and stores are unchanged until they move to the API. This route alone accepts bodies up to 20 MB (a backup is far over `express.json()`'s 100 KB default), and the error handler now answers an oversized body with 413 and unreadable JSON with 400 instead of a 500.
 
 ---
 
