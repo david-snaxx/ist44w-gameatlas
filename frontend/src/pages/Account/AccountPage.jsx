@@ -6,10 +6,7 @@ import { useCurrentUser } from '../../api/useCurrentUser.js'
 import { formatDateTime } from '../../utils/formatDate.js'
 import { plural } from '../../utils/plural.js'
 
-/**
- * The logged-in account (/account). A proof of concept: it shows everything the API says about the
- * user and nothing else, which is enough to see that the session cookie is reaching the backend.
- */
+/** The logged-in account (/account): everything the API says about the user. */
 function AccountPage() {
   const currentUser = useCurrentUser()
 
@@ -38,10 +35,7 @@ function AccountPage() {
   )
 }
 
-/**
- * Every field of the User type (backend/src/types/users.ts). `passwordHash` is the one field that
- * isn't here: the API never sends it, which is the point.
- */
+/** Every field of the User type except `passwordHash`, which the API never sends. */
 function AccountDetails({ user }) {
   return (
     <div>

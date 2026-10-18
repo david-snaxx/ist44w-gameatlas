@@ -103,7 +103,7 @@ export function validateValues(fields, values = {}, prefix = '', referenceKeys) 
 
     if (field.type === 'object') {
       const groupErrors = validateValues(field.fields ?? [], value ?? {}, path, referenceKeys)
-      // Copy every error found inside the group into `errors`
+      // Copies the group's errors into `errors`
       Object.assign(errors, groupErrors)
     } else if (field.type === 'list') {
       let items = []
@@ -339,8 +339,8 @@ function checkFieldsInto(errors, fields, blueprintIds) {
 }
 
 /**
- * Checks how a blueprint, asset or dialogue ID is written: required, lowercase snake_case, and at most
- * MAX_ID_LENGTH characters. Returns a message, or null when it's fine. Whether it's taken is checked by the caller.
+ * Checks how a blueprint, asset or dialogue ID is written: required, lowercase snake_case, at most MAX_ID_LENGTH
+ * characters. Returns a message or null. Whether it's taken is up to the caller.
  */
 export function validateIdFormat(id) {
   if (!id) {

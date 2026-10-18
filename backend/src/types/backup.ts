@@ -2,10 +2,7 @@ import type {Asset} from './asset.ts'
 import type {Blueprint} from './blueprint.ts'
 import type {Dialogue} from './dialogue.ts'
 
-/**
- * A backup containing everything GameAtlas stores.
- * This may be a JSON file that a user saves to their device.
- */
+/** A backup of everything in one project: a JSON file the user saves to their device. */
 export interface Backup {
     app: 'GameAtlas'
     type: 'backup'
@@ -13,10 +10,10 @@ export interface Backup {
     formatVersion: number
     /** ISO 8601 creation time. */
     createdAt: string
-    /** All {@link Blueprint} objects the user has access to. */
+    /** The project's {@link Blueprint}s. */
     blueprints: Blueprint[]
-    /** All {@link Asset} objects the user has access to. */
+    /** The project's {@link Asset}s. */
     assets: Asset[]
-    /** All {@link Dialogue} objects the user has access to. */
+    /** The project's {@link Dialogue}s. */
     dialogues: Dialogue[]
 }

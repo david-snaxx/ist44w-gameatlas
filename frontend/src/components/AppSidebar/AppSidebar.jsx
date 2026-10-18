@@ -3,30 +3,39 @@ import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { clearCurrentUser } from '../../api/currentUserStore.js'
 import { logOut } from '../../api/users.js'
+import { useCurrentProject } from '../../api/useCurrentProject.js'
 import { useCurrentUser } from '../../api/useCurrentUser.js'
-import { useToast } from '../Toast/useToast.js'
 import { useBlueprints } from '../../schema/useBlueprints.js'
+import { useToast } from '../Toast/useToast.js'
 
-/** The app's main navigation: groups of links, shown in every page's AppShell. */
+// Projects whose section is folded. Kept outside the components so it survives moving between pages.
+const foldedProjectIds = new Set()
+
+/** The main navigation in every page's AppShell: Home, one foldable section per project, then General. */
 function AppSidebar() {
+  const currentProject = useCurrentProject()
   const blueprints = useBlueprints()
   const { pathname } = useLocation()
 
   // Each link is a plain object: { label, icon, to }
   const homeLink = { label: 'Home', icon: LayoutDashboard, to: '/' }
-
-  const assetLinks = [{ label: 'All assets', icon: Boxes, to: '/assets' }]
-  for (const blueprint of blueprints) {
-    // A blueprint from a hand-edited backup might have no name, so fall back to its ID
-    const label = blueprint.name || blueprint.id
-    assetLinks.push({ label: label, icon: Box, to: `/blueprints/${blueprint.id}/assets` })
-  }
-
-  const dialogueLinks = [{ label: 'All dialogues', icon: MessagesSquare, to: '/dialogues' }]
-  const blueprintLinks = [{ label: 'All blueprints', icon: LayoutList, to: '/blueprints' }]
   const generalLinks = [{ label: 'Settings', icon: Settings, to: '/settings' }]
 
-  const allLinks = [homeLink, ...assetLinks, ...dialogueLinks, ...blueprintLinks, ...generalLinks]
+  // Every link, so the best match for the URL can be highlighted
+  const allLinks = [homeLink, ...generalLinks]
+  const sections = []
+  for (const project of currentProject.projects) {
+    // The current project uses the blueprint store, so a save shows at once; others show what the page loaded
+    let projectBlueprints = currentProject.blueprints[project.id]
+    if (currentProject.project && project.id === currentProject.project.id) {
+      projectBlueprints = blueprints
+    }
+    const section = buildProjectSection(project, projectBlueprints)
+    sections.push(section)
+    for (const link of section.links) {
+      allLinks.push(link)
+    }
+  }
   const activeTo = findActiveRoute(allLinks, pathname)
 
   // <> ... </> is a "fragment": it groups several elements without adding a wrapper element to the page
@@ -35,9 +44,10 @@ function AppSidebar() {
       <nav>
         <SidebarLink link={homeLink} activeTo={activeTo} />
       </nav>
-      <SidebarGroup title="Assets" links={assetLinks} activeTo={activeTo} />
-      <SidebarGroup title="Dialogues" links={dialogueLinks} activeTo={activeTo} />
-      <SidebarGroup title="Blueprints" links={blueprintLinks} activeTo={activeTo} />
+      {sections.map((section) => (
+        <ProjectSection key={section.project.id} section={section} activeTo={activeTo} />
+      ))}
+      {currentProject.error && <p className="nav-note">{currentProject.error}</p>}
       <SidebarGroup title="General" links={generalLinks} activeTo={activeTo} />
       <AccountLink />
     </>
@@ -45,9 +55,29 @@ function AppSidebar() {
 }
 
 /**
- * Picks the link to highlight: the one whose route is the longest match for the current URL.
- * For example, /blueprints/item/assets/sword_of_fire matches both "/blueprints" and
- * "/blueprints/item/assets", and the longer one (the Item link) wins.
+ * One project's links in the sidebar's three groups, plus all of them (`links`) for findActiveRoute(). Until there's
+ * a project picker, every project's links go to the same pages.
+ */
+function buildProjectSection(project, blueprints = []) {
+  const assetLinks = [{ label: 'All assets', icon: Boxes, to: '/assets' }]
+  for (const blueprint of blueprints) {
+    assetLinks.push({ label: blueprint.name, icon: Box, to: `/blueprints/${blueprint.id}/assets` })
+  }
+  const dialogueLinks = [{ label: 'All dialogues', icon: MessagesSquare, to: '/dialogues' }]
+  const blueprintLinks = [{ label: 'All blueprints', icon: LayoutList, to: '/blueprints' }]
+
+  return {
+    project: project,
+    assetLinks: assetLinks,
+    dialogueLinks: dialogueLinks,
+    blueprintLinks: blueprintLinks,
+    links: [...assetLinks, ...dialogueLinks, ...blueprintLinks],
+  }
+}
+
+/**
+ * The link to highlight: the longest route matching the URL. /blueprints/item/assets/sword_of_fire matches
+ * "/blueprints" and "/blueprints/item/assets", and the longer one wins.
  */
 function findActiveRoute(links, pathname) {
   let bestRoute = null
@@ -65,11 +95,7 @@ function findActiveRoute(links, pathname) {
   return bestRoute
 }
 
-/**
- * Who is logged in, at the foot of the sidebar: their display name, leading to the account page.
- * When nobody is logged in it offers the way in instead. It shows nothing at all until the server
- * has answered, so it never says the wrong thing first.
- */
+/** The logged-in user's name, linking to the account page (or a Log in link); nothing until the server answers. */
 function AccountLink() {
   const currentUser = useCurrentUser()
   const { pathname } = useLocation()
@@ -121,7 +147,7 @@ function LogOutButton() {
       return
     }
 
-    // The cookie is gone, so tell the rest of the app before anything asks the server again
+    // Before anything asks the server again
     clearCurrentUser()
     toast.show({ status: 'success', message: 'Logged out' })
     navigate('/login')
@@ -132,6 +158,34 @@ function LogOutButton() {
       <LogOut size={16} />
       <span className="truncate">Log out</span>
     </button>
+  )
+}
+
+/**
+ * One project: its name and its Assets, Dialogues and Blueprints groups. It's a native <details>, so the browser
+ * does the folding; this only remembers which sections are folded.
+ */
+function ProjectSection({ section, activeTo }) {
+  const projectId = section.project.id
+
+  // The browser already opened or closed it; remember which for the next page
+  function handleToggle(event) {
+    if (event.currentTarget.open) {
+      foldedProjectIds.delete(projectId)
+    } else {
+      foldedProjectIds.add(projectId)
+    }
+  }
+
+  return (
+    <details className="nav-project" open={!foldedProjectIds.has(projectId)} onToggle={handleToggle}>
+      <summary className="nav-project-name">{section.project.name}</summary>
+      <div className="nav-project-groups">
+        <SidebarGroup title="Assets" links={section.assetLinks} activeTo={activeTo} />
+        <SidebarGroup title="Dialogues" links={section.dialogueLinks} activeTo={activeTo} />
+        <SidebarGroup title="Blueprints" links={section.blueprintLinks} activeTo={activeTo} />
+      </div>
+    </details>
   )
 }
 

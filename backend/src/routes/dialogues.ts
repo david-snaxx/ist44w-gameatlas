@@ -13,13 +13,8 @@ import {
 } from '../../../frontend/src/data/dialogueGraph.js';
 
 /*
- * Dialogues live inside a project and their `id` is the row's UUID, so /dialogues/:id needs no project of
- * its own; `?projectId=…` (GET, DELETE) and `projectId` in the body (POST, PUT) say which project the
- * caller means. The snake_case `key` users see only has to be unique within that project.
- *
- * A dialogue with problems can still be saved, the same as in the editor, so the graph checks come back
- * as `problems` next to the saved dialogue instead of refusing the write. Only the name and ID are
- * strict enough to turn into a 400.
+ * A dialogue's `id` is its row's UUID, and its snake_case `key` is unique within its project. Unfinished trees can
+ * be saved, so only the name and key are refused; the tree's problems come back as `problems` on GET.
  */
 
 // region Express Routing
@@ -48,7 +43,7 @@ async function getDialogueRoot(request: Request, response: Response) {
 
 /**
  * GET /dialogues/:id?projectId=…
- * The dialogue, plus what's still wrong with it (`problems`), which is what stops it being downloaded.
+ * The dialogue, plus what's still wrong with its tree (`problems`).
  */
 async function getDialogue(request: Request<{ id: string }>, response: Response) {
     const access = await openProject(request, request.query.projectId);
@@ -94,7 +89,6 @@ async function postDialogue(request: Request, response: Response) {
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
     try {
-        // The row and the project's list of dialogues are one change, so they share a transaction
         await withTransaction(async (connection) => {
             await connection.query(insertQuery, [
                 id,
@@ -123,7 +117,7 @@ async function postDialogue(request: Request, response: Response) {
 
 /**
  * PUT /dialogues/:id
- * Body: the same as POST. Saving an unfinished dialogue is allowed.
+ * Body: the same as POST.
  */
 async function putDialogue(request: Request<{ id: string }>, response: Response) {
     const body = request.body ?? {};
@@ -197,33 +191,26 @@ async function deleteDialogue(request: Request<{ id: string }>, response: Respon
 // endregion
 
 // region Helpers
-/** SQL columns that make up a {@link Dialogue}. `key` is a MySQL keyword, so it needs backticks. */
+/** SQL columns of a {@link Dialogue}. `key` needs backticks because it's a MySQL keyword. */
 const DIALOGUE_COLUMNS = `id, dialogue_key AS \`key\`, name, description, speaker_blueprint AS speakerBlueprint,
                           item_blueprint AS itemBlueprint, nodes, edges, created_at AS createdAt,
                           updated_at AS updatedAt`;
 
-/**
- * Every dialogue in a project, sorted by name. Also used by PUT /projects/:id/contents to answer with what it saved.
- */
+/** Every dialogue in a project, sorted by name. */
 export async function findDialogues(projectId: string): Promise<Dialogue[]> {
     const selectQuery = `SELECT ${DIALOGUE_COLUMNS} FROM dialogues WHERE project_id = ? ORDER BY name`;
     const [rows] = await db.query<RowDataPacket[]>(selectQuery, [projectId]);
     return rows as Dialogue[];
 }
 
-/**
- * Returns a single dialogue by its UUID, or undefined when there is none in this project.
- */
+/** One dialogue by its UUID, or undefined when the project has none. */
 async function findDialogue(projectId: string, id: string): Promise<Dialogue | undefined> {
     const selectQuery = `SELECT ${DIALOGUE_COLUMNS} FROM dialogues WHERE project_id = ? AND id = ?`;
     const [rows] = await db.query<RowDataPacket[]>(selectQuery, [projectId, id]);
     return rows[0] as Dialogue | undefined;
 }
 
-/**
- * The snake_case IDs of the project's other dialogues, which is how validateDialogueDetails() knows
- * whether an ID is taken. `exceptId` leaves out the dialogue being updated, so its own ID is free.
- */
+/** The keys of the project's dialogues, leaving out `exceptId` (the one being updated). */
 async function findDialogueKeys(projectId: string, exceptId: string | null): Promise<string[]> {
     const selectQuery = `SELECT id, dialogue_key AS \`key\` FROM dialogues WHERE project_id = ?`;
     const [rows] = await db.query<RowDataPacket[]>(selectQuery, [projectId]);
@@ -237,10 +224,7 @@ async function findDialogueKeys(projectId: string, exceptId: string | null): Pro
     return keys;
 }
 
-/**
- * Checks the name and ID with the frontend's own validateDialogueDetails(), and returns what's wrong in
- * the shape the form shows inline: [{ path, message }] (PLAN.md §6).
- */
+/** Checks the name and key with the frontend's own validateDialogueDetails(). Returns [{ path, message }]. */
 function validateDetailsFrom(body: { name?: unknown; key?: unknown }, otherKeys: string[]) {
     const problems: { path: string; message: string }[] = [];
 
@@ -257,10 +241,7 @@ function validateDetailsFrom(body: { name?: unknown; key?: unknown }, otherKeys:
     return problems;
 }
 
-/**
- * What's still wrong with a dialogue's tree, as the editor's checks list would show it.
- * It needs the rest of the project because lines point at speaker assets and actions give item assets.
- */
+/** What's still wrong with a dialogue's tree, checked against the project's blueprints and assets. */
 async function checkGraph(projectId: string, dialogue: Dialogue): Promise<DialogueProblem[]> {
     const blueprints = await findBlueprintsForLinks(projectId);
     const assets = await findAssetsForLinks(projectId);
@@ -283,10 +264,7 @@ async function findAssetsForLinks(projectId: string) {
     return rows as { schemaId: string; key: string }[];
 }
 
-/**
- * Optional text columns are never null in a dialogue: a missing value is saved as ''.
- * PUT /projects/:id/contents saves dialogues the same way.
- */
+/** The value trimmed, or '' when it isn't text: a dialogue's optional text columns are never null. */
 export function asText(value: unknown): string {
     if (typeof value !== 'string') {
         return '';

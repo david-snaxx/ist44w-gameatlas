@@ -5,6 +5,7 @@ import Badge from '../../components/Badge/Badge.jsx'
 import Button from '../../components/Button/Button.jsx'
 import EmptyState from '../../components/EmptyState/EmptyState.jsx'
 import ListPage from '../../components/ListPage/ListPage.jsx'
+import LoadingRecord from '../../components/LoadingRecord/LoadingRecord.jsx'
 import MissingRecord from '../../components/MissingRecord/MissingRecord.jsx'
 import TopBarActions from '../../components/TopBarActions/TopBarActions.jsx'
 import { useToast } from '../../components/Toast/useToast.js'
@@ -18,7 +19,7 @@ import {
   toExport,
 } from '../../data/assetData.js'
 import { useAssets } from '../../data/useAssets.js'
-import { useBlueprints } from '../../schema/useBlueprints.js'
+import { useBlueprint, useBlueprints } from '../../schema/useBlueprints.js'
 import { downloadCollection } from '../../utils/downloadJson.js'
 import { formatDateTime } from '../../utils/formatDate.js'
 
@@ -34,9 +35,14 @@ function AssetListPage() {
   const navigate = useNavigate()
   const toast = useToast()
   const [query, setQuery] = useState('')
+  const saved = useBlueprint(blueprintId)
 
-  const blueprint = blueprints.find((candidate) => candidate.id === blueprintId)
+  // Only say the blueprint doesn't exist once the project's blueprints have actually arrived
+  if (saved.status === 'loading' || saved.status === 'failed') {
+    return <LoadingRecord error={saved.error} />
+  }
 
+  const blueprint = saved.blueprint
   if (!blueprint) {
     return (
       <MissingRecord

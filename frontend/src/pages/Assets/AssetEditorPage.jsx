@@ -5,6 +5,7 @@ import AppShell from '../../components/AppShell/AppShell.jsx'
 import Button from '../../components/Button/Button.jsx'
 import ConfirmDialog from '../../components/ConfirmDialog/ConfirmDialog.jsx'
 import EmptyState from '../../components/EmptyState/EmptyState.jsx'
+import LoadingRecord from '../../components/LoadingRecord/LoadingRecord.jsx'
 import FormRenderer from '../../components/form/FormRenderer.jsx'
 import PropertyRow from '../../components/form/PropertyRow.jsx'
 import TextInput from '../../components/form/TextInput.jsx'
@@ -23,19 +24,18 @@ import {
   labelForPath,
   linksTo,
   referenceKeysFor,
-  replaceReferences,
   toData,
   toExport,
   toFormValues,
   parseAssetFile,
 } from '../../data/assetData.js'
-import { deleteAsset, saveAssets } from '../../data/assetStore.js'
-import { renameAssetInDialogue } from '../../data/dialogueGraph.js'
-import { saveDialogues } from '../../data/dialogueStore.js'
-import { useAssets } from '../../data/useAssets.js'
+import { deleteAsset, saveAsset } from '../../data/assetStore.js'
+import { dialogueLinksToAsset } from '../../data/dialogueGraph.js'
+import { moveAssetLinks } from '../../data/dialogueStore.js'
+import { useAsset, useAssets } from '../../data/useAssets.js'
 import { useDialogues } from '../../data/useDialogues.js'
 import { toSnakeCase } from '../../schema/blueprintDraft.js'
-import { useBlueprints } from '../../schema/useBlueprints.js'
+import { useBlueprint, useBlueprints } from '../../schema/useBlueprints.js'
 import { onlyTouchedErrors, validateAssetKey, validateValues } from '../../schema/validation.js'
 import { downloadJson } from '../../utils/downloadJson.js'
 import { formatDateTime } from '../../utils/formatDate.js'
@@ -58,6 +58,17 @@ const KEY_INPUT_ID = 'asset-meta-id'
 function AssetEditorPage() {
   const { blueprintId, assetKey } = useParams()
   const location = useLocation()
+  const savedBlueprint = useBlueprint(blueprintId)
+  const saved = useAsset(blueprintId, assetKey)
+
+  // The editor's state starts from the saved asset and its blueprint, so wait for both lists (a new asset too: its
+  // ID is checked against the others)
+  if (savedBlueprint.status === 'loading' || savedBlueprint.status === 'failed') {
+    return <LoadingRecord error={savedBlueprint.error} />
+  }
+  if (saved.status === 'loading' || saved.status === 'failed') {
+    return <LoadingRecord error={saved.error} />
+  }
 
   // location.state is what the page that sent us here passed along (an import or a duplicate), if anything
   const state = location.state ?? {}
@@ -72,6 +83,7 @@ function AssetEditorPage() {
       key={editorKey}
       blueprintId={blueprintId}
       assetKey={assetKey}
+      savedAsset={saved.asset}
       imported={state.imported}
       origin={state.origin}
       originName={state.originName}
@@ -81,11 +93,12 @@ function AssetEditorPage() {
 }
 
 /**
+ * savedAsset: the asset as the server last saved it, or null (a new asset, or the URL's asset doesn't exist)
  * imported: { key, data } to start a new asset from (an imported file or a duplicate)
  * origin: 'file' (the default) | 'duplicate'; originName: the name of the asset that was duplicated
  * followName: for duplicates, whether the ID should keep following the name
  */
-function AssetEditor({ blueprintId, assetKey, imported, origin, originName, followName }) {
+function AssetEditor({ blueprintId, assetKey, savedAsset, imported, origin, originName, followName }) {
   const isDuplicate = origin === 'duplicate'
   // An imported file keeps its ID; a duplicate's ID follows its name (if it has one)
   const importedKeyIsFixed = Boolean(imported?.key) && !(isDuplicate && followName)
@@ -98,8 +111,9 @@ function AssetEditor({ blueprintId, assetKey, imported, origin, originName, foll
   const blueprint = blueprints.find((candidate) => candidate.id === blueprintId) ?? null
   const fields = blueprint?.fields ?? []
 
-  // The last saved asset (null for a new one). `useState(() => …)` only runs the function the first time.
-  const [baseline, setBaseline] = useState(() => findSavedAsset(assets, blueprintId, assetKey))
+  // The last saved asset (null for a new one), replaced by the server's answer after each save
+  const [baseline, setBaseline] = useState(savedAsset)
+  // `useState(() => …)` only runs the function the first time
   const [key, setKey] = useState(() => startingKey(baseline, imported))
   const [values, setValues] = useState(() => startingValues(fields, baseline, imported))
   // keyTouched: the user chose the ID, so stop filling it in from the name. keyShowErrors: show the ID's error.
@@ -108,6 +122,8 @@ function AssetEditor({ blueprintId, assetKey, imported, origin, originName, foll
   const [touchedPaths, setTouchedPaths] = useState([])
   const [submitted, setSubmitted] = useState(Boolean(imported) && !isDuplicate)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  // True while a save or delete waits for the server, so the buttons can't send it twice
+  const [sending, setSending] = useState(false)
 
   // ---------- Derived data ----------
 
@@ -185,45 +201,47 @@ function AssetEditor({ blueprintId, assetKey, imported, origin, originName, foll
 
   // ---------- Saving, discarding, deleting, downloading ----------
 
-  function handleSave() {
+  async function handleSave() {
     setSubmitted(true)
     if (problemCount > 0) {
       toast.show({ status: 'error', message: `Fix ${plural(problemCount, 'problem')} before saving` })
       return
     }
 
-    const now = new Date().toISOString()
-    const saved = {
-      id: baseline?.id ?? crypto.randomUUID(),
-      key: key,
-      schemaId: blueprint.id,
-      schemaVersion: blueprint.version,
-      data: data,
-      createdAt: baseline?.createdAt ?? now,
-      updatedAt: now,
+    // The server moves the links to a renamed asset; these counts are only for the message
+    const isRenamed = baseline !== null && baseline.key !== key
+    let relinkedAssetCount = 0
+    let relinkedDialogueCount = 0
+    if (isRenamed) {
+      relinkedAssetCount = countLinkingAssets(baseline, blueprint, assets, blueprints)
+      relinkedDialogueCount = countLinkingDialogues(baseline, blueprint, dialogues)
     }
 
-    // If the ID changed, keep links in other assets and in dialogues pointing at this asset
-    const changedAssets = [saved]
-    let changedDialogues = []
-    if (baseline && baseline.key !== key) {
-      const relinked = relinkAssets(assets, blueprints, saved.id, blueprint.id, baseline.key, key)
-      for (const other of relinked) {
-        changedAssets.push(other)
-      }
-      changedDialogues = relinkDialogues(dialogues, blueprint.id, baseline.key, key)
+    // A new asset has no id until the server gives it one
+    let id = null
+    if (baseline) {
+      id = baseline.id
+    }
+    setSending(true)
+    const result = await saveAsset({ id: id, key: key, schemaId: blueprint.id, data: data })
+    setSending(false)
+
+    if (result.error) {
+      toast.show({ status: 'error', message: result.error })
+      return
     }
 
-    saveAssets(changedAssets)
-    if (changedDialogues.length > 0) {
-      saveDialogues(changedDialogues)
+    // Dialogues in memory follow the rename the server made (the asset store reloads its own list)
+    if (isRenamed) {
+      moveAssetLinks(blueprint.id, baseline.key, key)
     }
-    setBaseline(saved)
+
+    setBaseline(result.data)
     setSubmitted(false)
     setTouchedPaths([])
     setKeyTouched(true)
     setKeyShowErrors(false)
-    toast.show({ status: 'success', message: savedMessage(changedAssets.length - 1, changedDialogues.length) })
+    toast.show({ status: 'success', message: savedMessage(relinkedAssetCount, relinkedDialogueCount) })
 
     if (key !== assetKey) {
       // New asset, or its ID changed: move to its new address
@@ -241,10 +259,18 @@ function AssetEditor({ blueprintId, assetKey, imported, origin, originName, foll
     setSubmitted(Boolean(imported) && !baseline && !isDuplicate)
   }
 
-  function handleDelete() {
+  async function handleDelete() {
     setConfirmDelete(false)
+    setSending(true)
+    const result = await deleteAsset(baseline.id)
+    setSending(false)
+
+    if (result.error) {
+      toast.show({ status: 'error', message: result.error })
+      return
+    }
+
     allowLeaving()
-    deleteAsset(baseline.id)
     toast.show({ status: 'success', message: `Asset "${assetLabel(baseline, blueprint)}" deleted` })
     navigate(`/blueprints/${blueprint.id}/assets`, { replace: true })
   }
@@ -377,14 +403,20 @@ function AssetEditor({ blueprintId, assetKey, imported, origin, originName, foll
           actions={formPaneActions}
           footer={
             <>
-              <Button variant="primary" icon={Save} onClick={handleSave}>
+              <Button variant="primary" icon={Save} disabled={sending} onClick={handleSave}>
                 Save asset
               </Button>
-              <Button icon={RotateCcw} disabled={!isDirty} onClick={handleDiscard}>
+              <Button icon={RotateCcw} disabled={!isDirty || sending} onClick={handleDiscard}>
                 Discard changes
               </Button>
               {baseline && (
-                <Button variant="danger" icon={Trash2} className="push-right" onClick={() => setConfirmDelete(true)}>
+                <Button
+                  variant="danger"
+                  icon={Trash2}
+                  className="push-right"
+                  disabled={sending}
+                  onClick={() => setConfirmDelete(true)}
+                >
                   Delete
                 </Button>
               )}
@@ -456,15 +488,6 @@ function AssetList({ blueprint, blueprintAssets, selectedId, onSelect }) {
 
 // ---------- Helpers ----------
 
-// The saved asset being edited, or null for a new asset (or when the URL's asset doesn't exist)
-function findSavedAsset(assets, blueprintId, assetKey) {
-  if (!assetKey) {
-    return null
-  }
-  const found = assets.find((asset) => asset.schemaId === blueprintId && asset.key === assetKey)
-  return found ?? null
-}
-
 // The ID the editor starts with (and goes back to on Discard)
 function startingKey(baseline, imported) {
   if (baseline) {
@@ -508,35 +531,30 @@ function buildProblemList(keyError, valueErrors, fields) {
   return problems
 }
 
-// Other assets whose links pointed at the old key, with those links changed to the new key
-function relinkAssets(assets, blueprints, savedId, blueprintId, oldKey, newKey) {
-  const changed = []
+// How many other assets link to `asset` (which is made from `blueprint`)
+function countLinkingAssets(asset, blueprint, assets, blueprints) {
+  let count = 0
   for (const other of assets) {
-    if (other.id === savedId) {
+    if (other.id === asset.id) {
       continue
     }
     const otherBlueprint = blueprints.find((candidate) => candidate.id === other.schemaId)
-    if (!otherBlueprint) {
-      continue
-    }
-    const nextData = replaceReferences(otherBlueprint.fields, other.data, blueprintId, oldKey, newKey)
-    if (JSON.stringify(nextData) !== JSON.stringify(other.data)) {
-      changed.push({ ...other, data: nextData })
+    if (otherBlueprint && linksTo(otherBlueprint.fields, other.data, blueprint.id, asset.key)) {
+      count++
     }
   }
-  return changed
+  return count
 }
 
-// Dialogues whose speakers or items pointed at the old key, updated to the new key
-function relinkDialogues(dialogues, blueprintId, oldKey, newKey) {
-  const changed = []
+// How many dialogues use `asset` (which is made from `blueprint`) as a speaker or a given item
+function countLinkingDialogues(asset, blueprint, dialogues) {
+  let count = 0
   for (const dialogue of dialogues) {
-    const updated = renameAssetInDialogue(dialogue, blueprintId, oldKey, newKey)
-    if (updated) {
-      changed.push(updated)
+    if (dialogueLinksToAsset(dialogue, blueprint.id, asset.key)) {
+      count++
     }
   }
-  return changed
+  return count
 }
 
 // "Asset saved", plus which links were updated if the ID changed
@@ -557,16 +575,7 @@ function savedMessage(otherAssetCount, dialogueCount) {
 
 // The delete confirmation, warning how many other assets link to this one
 function deleteMessage(baseline, blueprint, assets, blueprints) {
-  let linkingCount = 0
-  for (const other of assets) {
-    if (other.id === baseline.id) {
-      continue
-    }
-    const otherBlueprint = blueprints.find((candidate) => candidate.id === other.schemaId)
-    if (otherBlueprint && linksTo(otherBlueprint.fields, other.data, blueprint.id, baseline.key)) {
-      linkingCount++
-    }
-  }
+  const linkingCount = countLinkingAssets(baseline, blueprint, assets, blueprints)
 
   const message = `Delete asset "${assetLabel(baseline, blueprint)}"? This can't be undone.`
   if (linkingCount === 0) {

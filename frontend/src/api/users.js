@@ -1,66 +1,56 @@
+import {sendRequest} from './request.js'
+
 /*
- * Calls to the user part of the REST API (backend/src/routes/users.ts).
- *
- * The addresses are relative, so the browser only ever talks to the page's own address: Vite passes
- * anything starting with /api on to the backend during development (vite.config.js). That means no
- * CORS setup, and the login cookie the server sets is sent back automatically.
- *
- * Both calls answer { user } when it worked, or { error } with a message to show the person.
- * The user is the shape in backend/src/types/users.ts, minus the password hash:
- * { id, email, displayName, createdAt, projectIds }.
+ * Calls to backend/src/routes/users.ts.
+ * Each answers { data } or { error }.
  */
 
-/** Signs up. The backend refuses an email that's already registered. */
+/**
+ * Posts a new {@link User} to the database.
+ * The new user's `data` comes back without the password hash.
+ * @param email The email to log in with. Only one account may use it.
+ * @param password The password, at least 8 characters long.
+ * @param displayName The name shown in the app.
+ */
 export function signUp(email, password, displayName) {
-  return postJson('/api/users', { email: email, password: password, displayName: displayName })
+    const path = '/api/users'
+    const body = {
+        email: email,
+        password: password,
+        displayName: displayName
+    }
+    return sendRequest('POST', path, body)
 }
 
 /**
- * Ends the session: the server forgets it and clears the cookie, so the next call to /api/users/me
- * answers 401 again. There's nothing to send and nothing to read back, so only a failure matters.
+ * Logs the current {@link User} out.
+ * The server ends the session and clears the session cookie.
  */
 export function logOut() {
-  return postJson('/api/users/logout', {})
-}
-
-/** Logs in. On success the browser keeps the session cookie the server sends back. */
-export function logIn(email, password) {
-  return postJson('/api/users/login', { email: email, password: password })
+    const path = '/api/users/logout'
+    return sendRequest('POST', path)
 }
 
 /**
- * Sends `body` as JSON and reads the answer.
- *
- * The server says what went wrong in a { message } field, so a failure passes that straight through
- * instead of inventing wording here. Two things can go wrong before that: the server isn't running
- * (fetch itself fails), or the answer isn't JSON at all.
+ * Logs a {@link User} in and starts their session.
+ * The browser keeps the session cookie the server sends back.
+ * @param email The email the account was made with.
+ * @param password The account's password.
  */
-async function postJson(path, body) {
-  let response
-  try {
-    response = await fetch(path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-  } catch {
-    return { error: "Couldn't reach the server. Is the backend running?" }
-  }
-
-  let data
-  try {
-    data = await response.json()
-  } catch {
-    data = null
-  }
-
-  if (!response.ok) {
-    let message = 'Something went wrong. Please try again.'
-    if (data && typeof data.message === 'string') {
-      message = data.message
+export function logIn(email, password) {
+    const path = '/api/users/login'
+    const body = {
+        email: email,
+        password: password
     }
-    return { error: message }
-  }
+    return sendRequest('POST', path, body)
+}
 
-  return { user: data }
+/**
+ * Gets the logged-in {@link User}.
+ * Fails with a 401 when nobody is logged in.
+ */
+export function getMe() {
+    const path = '/api/users/me'
+    return sendRequest('GET', path)
 }

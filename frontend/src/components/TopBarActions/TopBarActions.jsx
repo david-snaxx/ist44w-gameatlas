@@ -5,14 +5,10 @@ import Button from '../Button/Button.jsx'
 import { useToast } from '../Toast/useToast.js'
 
 /**
- * The two buttons every section shows in the top bar: import a file, or start a new thing.
- *
+ * The top bar's Import and New buttons. An import opens the editor pre-filled (STYLE-GUIDELINES §7.15).
  * noun: what is being made, e.g. "asset" (used in both button labels)
  * newPath: the editor route for a new one, e.g. "/dialogues/new"
  * importFile(text): parses a chosen file and returns { error } or { imported }
- *
- * On a successful import the editor opens pre-filled through navigation state
- * (STYLE-GUIDELINES §7.15); nothing is saved until the user clicks Save.
  */
 function TopBarActions({ noun, newPath, importFile }) {
   const navigate = useNavigate()

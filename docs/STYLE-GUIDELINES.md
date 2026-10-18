@@ -204,7 +204,7 @@ Every page renders inside **`AppShell`**.
 
 - **Frame:** the top bar, sidebar and status bar are one continuous translucent surface with no borders between them. It has 8px of padding at the top and 12px on the right. The frame never scrolls; only the content zone and the sidebar (if its list is long) do.
 - **Top bar:** the wordmark sits above the sidebar. Global actions are right-aligned with the content zone's edge. The top bar holds no page-specific controls.
-- **Sidebar:** `AppSidebar`: groups of links with 16px icons, each group under a small uppercase title. A **Home** link (the dashboard) comes first, without a title. **Assets** has All assets and one link per blueprint (to its asset browser), **Dialogues** has All dialogues, **Blueprints** has All blueprints, and **General** has Settings. Hover uses `--color-hover-overlay`. The link whose route best matches the URL is active (`--color-accent-soft` background, `--color-accent-text` text), so an asset editor highlights its blueprint under Assets.
+- **Sidebar:** `AppSidebar`: groups of links with 16px icons, each group under a small uppercase title. A **Home** link (the dashboard) comes first, without a title. Then one **foldable section per project** the logged-in user belongs to (oldest first, from `useCurrentProject()`): a native `<details>` whose `<summary>` is the project's name (`.nav-project-name`, 14px semibold `--color-text`, with the browser's own disclosure triangle), and under it the project's **Assets** (All assets and one link per blueprint in that project, to its asset browser; the project being worked in lists the blueprint store's blueprints, so a saved, renamed or deleted blueprint shows at once, and any other project lists what it had when the page loaded), **Dialogues** (All dialogues) and **Blueprints** (All blueprints) groups, set in by `--space-3` (`.nav-project-groups`). Sections start open, and a folded one stays folded while the person moves between pages (remembered in the module, not in `localStorage`). With nobody logged in there are no project sections. If the projects can't be loaded, the server's message shows in their place as a muted 12px note (`.nav-note`). **General** has Settings. Hover uses `--color-hover-overlay`. The link whose route best matches the URL is active (`--color-accent-soft` background, `--color-accent-text` text), so an asset editor highlights its blueprint under Assets.
 - **Content zone:** one large rounded glass area between the top bar and status bar. It scrolls on its own. Pages sit inside it with `--space-5` padding, divided into flat sections (§6.1).
 - **Status bar:** breadcrumbs on the left in 12px muted text, aligned with the wordmark (separator `›`). Optional short status text on the right, such as "Saved" or "3 problems". Breadcrumbs appear on every page deeper than the home page.
 - **Asset editor = three panes:** asset list | form | preview (built, §7.12). Resizable and collapsible panes with sizes remembered in `localStorage` are **(planned)**.
@@ -305,7 +305,7 @@ Styled text "GameAtlas" in the Silkscreen font, `--color-text`, in the top-left 
 | Component | Purpose and props |
 |---|---|
 | `AppShell` | The page frame, with the sidebar built in. `actions` (top bar), `crumbs: [{ label, to? }]` and `status` (status bar), `children` (content zone) |
-| `AppSidebar` | The app's sidebar (§6). No props; `AppShell` renders it |
+| `AppSidebar` | The app's sidebar (§6): Home, a foldable section per project, General, and who is logged in. No props; `AppShell` renders it |
 | `Section` | A flat piece of a page (§6.1): `title` and optional `actions` above a rule, a scrolling body (a size container), optional `footer` above a rule. No fill, border or radius |
 | `SegmentedControl` | Switch between a few views: `options: [{ value, label }]`, `value`, `onChange(value)` |
 | `Button` | `variant` (primary / secondary / ghost / danger), `icon`, plus any `<button>` prop (`onClick`, `disabled`, `title`, `className`) |
@@ -334,6 +334,7 @@ Styled text "GameAtlas" in the Silkscreen font, `--color-text`, in the top-left 
 |---|---|
 | `ListPage` | The shape of every "all the X" page: heading with buttons, optional search toolbar, and a table that falls back to an empty state. The page keeps its own data and search state and passes filtered `rows` plus `total`; `ListPage` shows the count in the status bar and the "No X match." state (§7.12) |
 | `MissingRecord` | The page shown when a URL points at something that isn't there: `title`, `message`, `back: { to, label }`. Used for missing blueprints, assets and dialogues, and for unknown routes |
+| `LoadingRecord` | The page shown while a record is still on its way from the server (muted "Loading…"), or when it couldn't be loaded (`error`: a section "Couldn't load this page" with the server's message). Same frame as `MissingRecord`, which takes over if the record turns out not to exist. Used by the blueprint builder, the asset list, view and editor, and the dialogue editor |
 | `TopBarActions` | The Import / New pair in the top bar: `noun`, `newPath`, `importFile(text) → { imported } \| { error }`. On success it opens the editor pre-filled through navigation state (§7.15) |
 | `UnsavedChangesDialog` | The "discard unsaved changes?" prompt, driven by the blocker from `useUnsavedChanges()` |
 
@@ -342,7 +343,7 @@ The first real page (`pages/Blueprints/`) sets the pattern for editor pages:
 - **Two panes:** the thing being edited (left, with General settings then the property list) and a **Preview** pane (right) whose header `SegmentedControl` switches between "Asset form" (a working `FormRenderer`, nothing saved) and "Blueprint file" (`JsonPreview alwaysVisible`).
 - **Property rows:** 36px bordered rows showing the label (with required `*`), the ID in muted text, a neutral type `Badge`, and ghost icon buttons for move up, move down, duplicate and remove. Clicking the row edits it. Rows with problems get an error border and an "N problems" note. Groups show their properties indented behind a 2px divider, with "Add property to …" underneath.
 - **Editing happens in the side panel** with stacked labels. The ID follows the label (camelCase) until edited. Errors appear once a setting is touched, or for everything after "Add property" / "Apply changes" is clicked.
-- **Pane footer:** Save (primary), Discard changes (disabled when nothing changed), and Delete (danger, pushed right, behind a confirmation that mentions blueprints linking to it).
+- **Pane footer:** Save (primary), Discard changes (disabled when nothing changed), and Delete (danger, pushed right, behind a confirmation that mentions blueprints linking to it). Save and delete wait for the server: the buttons are disabled meanwhile, success is a success toast, and a refusal is an error toast in the server's words with the builder left as it was. The status bar's version is the server's.
 - **Removing a property** is instant, with an Undo toast rather than a confirmation (nothing is saved until Save).
 - **Status bar:** "Unsaved changes", "Saved · version N", or "N problems" after a failed save.
 - **Leaving with unsaved changes** asks "Discard unsaved changes?"; closing the tab shows the browser's own warning.
@@ -370,7 +371,7 @@ The first real page (`pages/Blueprints/`) sets the pattern for editor pages:
 **Asset editor** (`/blueprints/:id/assets/:key/edit` and `/new`)
 - Its breadcrumbs end in "{asset} › Edit" (the asset name links back to the view), and the form pane header has a View (eye) button.
 - **Three panes:** the blueprint's assets (260px: name and ID, current asset selected, + button) | the form | Preview (340px).
-- **Form pane:** notices first (warning: saved with an older blueprint version; info: imported from a file), then the asset's **ID** (follows the name until edited), a divider, and the `FormRenderer` form. Footer: Save asset, Discard changes, Delete (danger, pushed right).
+- **Form pane:** notices first (warning: saved with an older blueprint version; info: imported from a file), then the asset's **ID** (follows the name until edited), a divider, and the `FormRenderer` form. Footer: Save asset, Discard changes, Delete (danger, pushed right). Save and delete wait for the server: the buttons are disabled meanwhile, success is a success toast, and a refusal is an error toast in the server's words with the editor left as it was. The asset view and editor show `LoadingRecord` until the project's assets have arrived.
 - **Preview pane:** `ValidationSummary`, then `JsonPreview` of the export shape (hidden until "Show JSON"). Its header has a download button. While required values are still empty and untouched, the summary says "Some properties still need values before this can be saved."
 - **Links** list the target blueprint's assets by name. With no assets, the dropdown is disabled and reads "No assets to link to yet".
 - **Status bar:** "Unsaved changes", "Saved {date}", "Not saved yet", or "N problems" after a failed save.
@@ -387,9 +388,9 @@ The first real page (`pages/Blueprints/`) sets the pattern for editor pages:
 `pages/Settings/`, at `/settings` (sidebar → General).
 - A single column (max 880px): H1 "Settings" with a muted intro, then stacked sections.
 - **Setting rows:** a bold 14px title and a muted 13px explanation on the left, one button on the right, separated by 1px dividers.
-- **Your data:** three count tiles (`--color-bg-raised`, 20px numbers, linking to each section) and a short note that data lives in this browser only, with its size. The status bar repeats the size.
+- **Your data:** three count tiles (`--color-bg-raised`, 20px numbers, linking to each section) and a short note that everything is saved on the server, in the project, and that a backup keeps a copy of your own, with the total size. The status bar repeats the size.
 - **Back up and restore:** Download backup (primary). "Choose backup file" (secondary) reads the file and shows a preview box (file name, date and contents) with Cancel and a danger "Restore this backup". Nothing changes until the confirmation dialog.
-- **Start over:** Reset to examples (secondary) and Delete everything (danger), each behind a confirmation that says exactly what will be replaced or deleted.
+- **Start over:** Reset to examples (secondary) and Delete everything (danger), each behind a confirmation that says exactly what will be replaced or deleted. Restore, reset and delete replace the whole project on the server and wait for it: the buttons are disabled meanwhile, and a refusal is an error toast with nothing changed.
 
 ### 7.15 Pattern: import and duplicate
 - **Import** buttons live in the top bar of each section's pages ("Import blueprint", "Import asset", "Import dialogue").
@@ -472,7 +473,7 @@ animated edge flow in the dialogue editor (§10), which React Flow draws itself.
 The node editor is **only for dialogue trees** (`pages/Dialogues/`, built with React Flow).
 
 - **Wording:** Dialogue, Line, Speaker (none = Narrator), Player choice with Responses, Check flag (If set / If not set), Action (Give item / Set story flag), Story flag, End.
-- **Page** (`/dialogues/:key`): the "Dialogue tree" canvas pane | a 340px "Dialogue" pane with Name, ID, Description, "Speakers come from" and "Items come from" (blueprint pickers), **Checks** (`ValidationSummary`; clicking a problem selects and centers its node), and the file JSON preview. Footer: Save, Discard, and a danger delete icon button. The header has a download button.
+- **Page** (`/dialogues/:key`): the "Dialogue tree" canvas pane | a 340px "Dialogue" pane with Name, ID, Description, "Speakers come from" and "Items come from" (blueprint pickers), **Checks** (`ValidationSummary`; clicking a problem selects and centers its node), and the file JSON preview. Footer: Save, Discard, and a danger delete icon button. The header has a download button. Save and delete wait for the server: the buttons are disabled meanwhile, success is a success toast, and a refusal (e.g. an ID another dialogue already has) is an error toast with the editor left as it was. The editor shows `LoadingRecord` until the project's dialogues and blueprints have arrived.
 - **Saving vs. downloading:** incomplete dialogues can be saved (the status bar adds "· N problems"); downloading requires every check to pass.
 - **Canvas:** React Flow's own dark theme (`colorMode="dark"`) with a 16px dot grid, inside a 1px `--color-border` edge with `--radius-md`. `DialogueCanvas.module.css` only recolors the connections through React Flow's `--xy-*` variables.
 - **Nodes:** `--color-bg-panel` card, `--radius-md`, 1px `--color-border` (error border when the node has problems), 260px wide (Start 150px, End 180px). A **header** holds a 14px Lucide icon, the node type name (13px/600) and a ghost delete button; nodes are dragged by the header. The node's problems are listed at its bottom in 12px error text.

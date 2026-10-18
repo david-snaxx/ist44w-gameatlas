@@ -44,8 +44,9 @@ function LoginPage() {
     }
 
     // Tell the rest of the app straight away, so the sidebar shows the name without asking again
-    setCurrentUser(result.user)
-    toast.show({ status: 'success', message: `Logged in as ${result.user.displayName}` })
+    const user = result.data
+    setCurrentUser(user)
+    toast.show({ status: 'success', message: `Logged in as ${user.displayName}` })
     navigate('/')
   }
 
@@ -74,11 +75,8 @@ function LoginPage() {
 }
 
 /**
- * What's missing before the form is worth sending, by field name: { email: 'Enter your email' }.
- * An empty object means there's nothing wrong.
- *
- * Logging in only checks that both boxes were filled in. Whether they're *right* is the server's
- * answer, and it deliberately won't say which of the two was wrong.
+ * What's missing before the form is worth sending, by field name: { email: 'Enter your email' }. Only checks that
+ * both boxes are filled in; whether they're right is the server's answer.
  */
 function findProblems(email, password) {
   const problems = {}

@@ -1,7 +1,6 @@
 /*
- * Blueprints: the definition of an asset type (called a *schema* in saved data, the API and the database).
- * This is the saved and downloaded shape (PLAN.md §5.2), as made by toDefinition() in
- * frontend/src/schema/blueprintDraft.js. Empty settings, settings that don't apply to the type, and `required: false` are left out.
+ * Blueprints (schemas in saved data, the API and the database), in the saved shape that toDefinition() in
+ * frontend/src/schema/blueprintDraft.js makes (PLAN.md §5.2).
  */
 
 /** Possible {@link Blueprint.fields} types as defined in frontend/src/schema/fieldTypes.js. */
@@ -22,9 +21,9 @@ export interface Blueprint {
     description?: string
     /** Always 'form'. Dialogues are their own thing, not a blueprint. */
     kind: 'form'
-    /** The current version. The first version will always be 1 and increment by 1. */
+    /** Starts at 1 and goes up by one each time the blueprint changes. */
     version: number
-    /** See: {@link Field}. The list of fields for all of a blueprint's properties. */
+    /** The blueprint's properties. */
     fields: Field[]
 }
 
@@ -91,10 +90,7 @@ export interface ReferenceField extends FieldBase {
     targetSchema: string
 }
 
-/**
- * A {@link Blueprint} field for a list of values.
- * {@link ListItemType} defines what type this list is.
- */
+/** A {@link Blueprint} field for a list of values of one {@link ListItemType}. */
 export interface ListField extends FieldBase {
     type: 'list'
     /** What one entry of the list holds. */
@@ -108,11 +104,7 @@ export interface GroupField extends FieldBase {
     fields: Field[]
 }
 
-/**
- * A list's entry type.
- * A list can't hold another list or a group.
- * Certain types have additional fields.
- */
+/** A list's entry type: any property type except a list or a group, with that type's settings. */
 export type ListItemType =
     | { type: 'string' | 'text'; maxLength?: number }
     | { type: 'int' | 'float'; min?: number; max?: number }

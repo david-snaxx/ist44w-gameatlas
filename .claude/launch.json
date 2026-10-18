@@ -10,7 +10,13 @@
     {
       "name": "backend",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["--watch", "--env-file-if-exists=backend/.env", "backend/src/server.ts"],
+      "runtimeArgs": [
+        "--watch-path=backend/src",
+        "--watch-path=frontend/src/schema",
+        "--watch-path=frontend/src/data",
+        "--watch-path=frontend/src/utils",
+        "backend/src/server.ts"
+      ],
       "port": 3000
     }
   ]

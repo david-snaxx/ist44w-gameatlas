@@ -23,10 +23,7 @@ export interface Project {
     dialogueIds: string[];
 }
 
-/**
- * Everything in one {@link Project}, the way a backup holds it. `PUT /api/projects/:id/contents` takes one
- * (checked by checkContents() in frontend/src/data/backupFile.js) and answers with what it saved.
- */
+/** Everything in one {@link Project}, as a backup holds it. What `PUT /api/projects/:id/contents` takes and answers. */
 export interface ProjectContents {
     blueprints: Blueprint[];
     assets: Asset[];

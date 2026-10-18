@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { createBrowserRouter, RouterProvider } from 'react-router'
+import {createBrowserRouter, Navigate, Outlet, RouterProvider, useLocation} from 'react-router'
 import ToastProvider from './components/Toast/ToastProvider.jsx'
 import AccountPage from './pages/Account/AccountPage.jsx'
 import AllAssetsPage from './pages/Assets/AllAssetsPage.jsx'
@@ -14,6 +14,7 @@ import LoginPage from './pages/Login/LoginPage.jsx'
 import SignUpPage from './pages/Login/SignUpPage.jsx'
 import NotFoundPage from './pages/NotFound/NotFoundPage.jsx'
 import SettingsPage from './pages/Settings/SettingsPage.jsx'
+import {useCurrentUser} from "./api/useCurrentUser.js";
 
 // The dialogue editor brings in React Flow, which is large, so it's only downloaded when that page is opened
 const DialogueEditorPage = lazy(() => import('./pages/Dialogues/DialogueEditorPage.jsx'))
@@ -23,23 +24,39 @@ function lazyPage(page) {
   return <Suspense fallback={null}>{page}</Suspense>
 }
 
-// Every page and its URL. (A "data router" like this one is needed for the unsaved-changes guard.)
+
+/** Wraps every page that needs a login: a logged-out visitor goes to /login, which remembers where they were headed. */
+function RequireLogin() {
+  const user = useCurrentUser();
+  const location = useLocation();
+  if (!user.checked) return null;
+  if (!user.user) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+  return <Outlet />
+}
+
+
 const router = createBrowserRouter([
-  { path: '/', element: <DashboardPage /> },
-  { path: '/assets', element: <AllAssetsPage /> },
-  { path: '/blueprints', element: <BlueprintListPage /> },
-  { path: '/blueprints/new', element: <BlueprintBuilderPage /> },
-  { path: '/blueprints/:blueprintId', element: <BlueprintBuilderPage /> },
-  { path: '/blueprints/:blueprintId/assets', element: <AssetListPage /> },
-  { path: '/blueprints/:blueprintId/assets/new', element: <AssetEditorPage /> },
-  { path: '/blueprints/:blueprintId/assets/:assetKey', element: <AssetViewPage /> },
-  { path: '/blueprints/:blueprintId/assets/:assetKey/edit', element: <AssetEditorPage /> },
-  { path: '/dialogues', element: <DialogueListPage /> },
-  { path: '/dialogues/new', element: lazyPage(<DialogueEditorPage />) },
-  { path: '/dialogues/:dialogueKey', element: lazyPage(<DialogueEditorPage />) },
-  { path: '/settings', element: <SettingsPage /> },
-  { path: '/account', element: <AccountPage /> },
-  // Signed-out pages. They stand on their own for now: nothing else checks for a login yet.
+  {
+    element: <RequireLogin />,
+    children: [
+      { path: '/', element: <DashboardPage /> },
+      { path: '/assets', element: <AllAssetsPage /> },
+      { path: '/blueprints', element: <BlueprintListPage /> },
+      { path: '/blueprints/new', element: <BlueprintBuilderPage /> },
+      { path: '/blueprints/:blueprintId', element: <BlueprintBuilderPage /> },
+      { path: '/blueprints/:blueprintId/assets', element: <AssetListPage /> },
+      { path: '/blueprints/:blueprintId/assets/new', element: <AssetEditorPage /> },
+      { path: '/blueprints/:blueprintId/assets/:assetKey', element: <AssetViewPage /> },
+      { path: '/blueprints/:blueprintId/assets/:assetKey/edit', element: <AssetEditorPage /> },
+      { path: '/dialogues', element: <DialogueListPage /> },
+      { path: '/dialogues/new', element: lazyPage(<DialogueEditorPage />) },
+      { path: '/dialogues/:dialogueKey', element: lazyPage(<DialogueEditorPage />) },
+      { path: '/settings', element: <SettingsPage /> },
+      { path: '/account', element: <AccountPage /> },
+    ],
+  },
   { path: '/login', element: <LoginPage /> },
   { path: '/signup', element: <SignUpPage /> },
   { path: '*', element: <NotFoundPage /> },

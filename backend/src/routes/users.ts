@@ -20,7 +20,7 @@ usersRouter.delete('/:id', deleteUser);
 // region Endpoints
 /**
  * GET /users
- * For testing only: it shows every user's email to anyone. Remove it once login exists.
+ * For testing only: shows every user's email to anyone. Remove before deploying.
  */
 async function getUserRoot(request: Request, response: Response) {
     const selectQuery = `SELECT ${PUBLIC_COLUMNS} FROM users`
@@ -125,7 +125,7 @@ async function deleteUser(request: Request<{ id: string }>, response: Response) 
 
 /**
  * GET /users/me
- * Gets the full User object for the logged-in user if a session is active.
+ * The logged-in user, without the password hash. 401 when nobody is logged in.
  */
 async function getMe(request: Request, response: Response) {
     const userId = request.session.userId;
@@ -143,8 +143,7 @@ async function getMe(request: Request, response: Response) {
 
 /**
  * POST /users/login
- * Checks the email and password.
- * On success the session remembers the user's ID, and the browser keeps the session cookie.
+ * Checks the email and password, then starts a fresh session holding the user's ID.
  */
 async function postLogin(request: Request, response: Response) {
     const { email, password } = request.body ?? {};
@@ -177,7 +176,7 @@ async function postLogin(request: Request, response: Response) {
 
 /**
  * POST /users/logout
- * Ends the user's session on the server and removes the session cookie from the browser.
+ * Ends the session on the server and clears the browser's session cookie.
  */
 async function postLogout(request: Request, response: Response) {
     await destroySession(request);
@@ -187,13 +186,10 @@ async function postLogout(request: Request, response: Response) {
 // endregion
 
 // region Helpers
-/** express-session's default name for the session cookie */
+/** express-session's default name for the session cookie. */
 const SESSION_COOKIE_NAME = 'connect.sid';
 
-/**
- * Gives the request a brand-new, empty session. express-session reports back through a callback,
- * so this wraps it in a Promise that the route can `await`.
- */
+/** Replaces the request's session with a fresh, empty one. Wraps express-session's callback in a Promise. */
 function regenerateSession(request: Request): Promise<void> {
     return new Promise((resolve, reject) => {
         request.session.regenerate((error) => {
@@ -206,7 +202,7 @@ function regenerateSession(request: Request): Promise<void> {
     });
 }
 
-/** Deletes the request's session on the server. Wrapped in a Promise like regenerateSession. */
+/** Deletes the request's session (its row in the sessions table). Wraps express-session's callback in a Promise. */
 function destroySession(request: Request): Promise<void> {
     return new Promise((resolve, reject) => {
         request.session.destroy((error) => {
@@ -222,9 +218,7 @@ function destroySession(request: Request): Promise<void> {
 const MIN_PASSWORD_LENGTH = 8;
 const MAX_DISPLAY_NAME_LENGTH = 64;
 
-/**
- * Returns a string message describing password errors, or null if no errors exist.
- */
+/** What's wrong with a password, or null when it's fine. */
 function validatePassword(password: unknown): string | null {
     if (typeof password !== 'string') {
         return 'password must be a string';
@@ -238,9 +232,7 @@ function validatePassword(password: unknown): string | null {
     return null;
 }
 
-/**
- * Returns a string message describing display name errors, or null if no errors exist.
- */
+/** What's wrong with a display name, or null when it's fine. */
 function validateDisplayName(displayName: unknown): string | null {
     if (typeof displayName !== 'string') {
         return 'displayName must be a string';
@@ -255,10 +247,7 @@ function validateDisplayName(displayName: unknown): string | null {
     return null;
 }
 
-/**
- * Returns true when MySQL refused to write because another user in the db already has this email.
- * MySQL only refuses it because of the UNIQUE index on users.email: without that index, the duplicate would be saved.
- */
+/** True when MySQL refused a write because the UNIQUE index on users.email already has this email. */
 function isDuplicateEmail(error: unknown): boolean {
     if (!(error instanceof Error) || !('code' in error)) {
         return false;
@@ -266,13 +255,10 @@ function isDuplicateEmail(error: unknown): boolean {
     return error.code === 'ER_DUP_ENTRY';
 }
 
-/** SQL columns user data anyone could safely see */
+/** The user columns that are safe to send: everything except the password hash. */
 const PUBLIC_COLUMNS = 'id, email, display_name AS displayName, created_at AS createdAt, project_ids AS projectIds';
 
-/**
- * Returns a single user from the database by an id.
- * If no user is found with the given id, this function returns undefined.
- */
+/** One user's public columns by ID, or undefined when there's no such user. */
 async function getUserById(id: string) {
     const selectQuery = `SELECT ${PUBLIC_COLUMNS} FROM users WHERE id = ?`;
     const [rows] = await db.query<RowDataPacket[]>(selectQuery, [id]);

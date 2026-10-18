@@ -26,7 +26,7 @@ projectsRouter.delete('/:id', deleteProject);
 // region Endpoints
 /**
  * GET /projects
- * Every project the logged-in user is a member of.
+ * Every project the logged-in user is a member of, oldest first.
  */
 async function getProjectRoot(request: Request, response: Response) {
     const userId = request.session.userId;
@@ -34,9 +34,10 @@ async function getProjectRoot(request: Request, response: Response) {
         return response.status(401).json({ message: 'Log in first' });
     }
 
-    // JSON_CONTAINS asks MySQL whether the user's ID is in the project's member list
+    // created_at only holds whole seconds, so name and id break ties
     const selectQuery = `SELECT ${PROJECT_COLUMNS} FROM projects
-                         WHERE JSON_CONTAINS(member_user_ids, ?)`;
+                         WHERE JSON_CONTAINS(member_user_ids, ?)
+                         ORDER BY created_at, name, id`;
     const [rows] = await db.query<RowDataPacket[]>(selectQuery, [JSON.stringify(userId)]);
     response.json(rows);
 }
@@ -78,7 +79,6 @@ async function postProject(request: Request, response: Response) {
                          VALUES (?, ?, ?, ?, ?, ?, ?)`;
     const emptyList = JSON.stringify([]);
 
-    // The project and the member's own list of projects are one change, so they share a transaction
     await withTransaction(async (connection) => {
         await connection.query(insertQuery, [
             id,
@@ -97,7 +97,7 @@ async function postProject(request: Request, response: Response) {
 
 /**
  * PUT /projects/:id
- * Renames a project. Its member and content lists are managed by the routes that change them.
+ * Renames a project.
  */
 async function putProject(request: Request<{ id: string }>, response: Response) {
     const userId = request.session.userId;
@@ -123,12 +123,8 @@ async function putProject(request: Request<{ id: string }>, response: Response) 
 
 /**
  * PUT /projects/:id/contents
- * Body: { blueprints, assets, dialogues }, each in its saved shape, the way a backup file holds them.
- * Replaces everything in the project at once: for restoring a backup, resetting to the examples, deleting
- * everything, and filling a new project. app.ts lets this route's body be bigger than the others'.
- *
- * The set is checked against itself first, with the frontend's own checkContents(). One problem refuses the
- * whole request and nothing is written, so a project is never left half-replaced.
+ * Body: { blueprints, assets, dialogues } in their saved shapes. Replaces everything in the project at once, or
+ * nothing when checkContents() finds a problem. Its body limit is raised in app.ts.
  */
 async function putProjectContents(request: Request<{ id: string }>, response: Response) {
     const access = await openProject(request, request.params.id);
@@ -143,7 +139,6 @@ async function putProjectContents(request: Request<{ id: string }>, response: Re
     }
     const contents = request.body as ProjectContents;
 
-    // Deleting the old rows, adding the new ones and rebuilding the project's ID lists are one change
     const now = new Date();
     await withTransaction(async (connection) => {
         await deleteContents(connection, project.id);
@@ -160,7 +155,6 @@ async function putProjectContents(request: Request<{ id: string }>, response: Re
         ]);
     });
 
-    // The answer is what the GET routes now give, with the new UUIDs
     const saved: ProjectContents = {
         blueprints: await findBlueprints(project.id),
         assets: await findAssets(project.id, null),
@@ -171,8 +165,7 @@ async function putProjectContents(request: Request<{ id: string }>, response: Re
 
 /**
  * DELETE /projects/:id
- * Deletes the project and everything in it. The blueprint, asset and dialogue rows go with it through
- * their foreign keys, so only the members' own project lists need tidying up here.
+ * Deletes the project. Its blueprints, assets and dialogues go with it through their foreign keys.
  */
 async function deleteProject(request: Request<{ id: string }>, response: Response) {
     const userId = request.session.userId;
@@ -204,9 +197,7 @@ const PROJECT_COLUMNS = `id, name, created_at AS createdAt, member_user_ids AS m
 
 const MAX_PROJECT_NAME_LENGTH = 120;
 
-/**
- * Returns a string message describing project name errors, or null if no errors exist.
- */
+/** What's wrong with a project name, or null when it's fine. */
 function validateName(name: unknown): string | null {
     if (typeof name !== 'string') {
         return 'name must be a string';
@@ -256,10 +247,8 @@ async function deleteContents(connection: PoolConnection, projectId: string): Pr
 }
 
 /**
- * Saves each blueprint as a new row with a fresh UUID, keeping its version. A blueprint's saved shape has no
- * timestamps, so its row starts at `now`. Returns each new row UUID by the blueprint's snake_case ID, in the
- * order they were saved: the assets need them for their foreign key, and the project for its list.
- * Runs in the caller's transaction.
+ * Inserts each blueprint as a new row, keeping its version. Returns the new row UUIDs by snake_case ID, in insert
+ * order. Runs in the caller's transaction.
  */
 async function insertBlueprints(
     connection: PoolConnection,
@@ -272,7 +261,6 @@ async function insertBlueprints(
     const rowIds = new Map<string, string>();
 
     for (const sent of blueprints) {
-        // The same clean shape the blueprint routes save: no editor-only `uid`s, no settings a type doesn't use
         const blueprint = cleanBlueprint({
             id: sent.id,
             name: sent.name.trim(),
@@ -298,8 +286,8 @@ async function insertBlueprints(
 }
 
 /**
- * Saves each asset as a new row with a fresh UUID, under its blueprint's new row. Keeps its schemaVersion and
- * timestamps; a missing timestamp becomes `now`. Returns the new UUIDs. Runs in the caller's transaction.
+ * Inserts each asset as a new row under its blueprint's new row, keeping its schemaVersion and timestamps.
+ * Returns the new UUIDs. Runs in the caller's transaction.
  */
 async function insertAssets(
     connection: PoolConnection,
@@ -329,10 +317,7 @@ async function insertAssets(
     return ids;
 }
 
-/**
- * Saves each dialogue as a new row with a fresh UUID, the way the dialogue routes save one. Keeps its timestamps;
- * a missing timestamp becomes `now`. Returns the new UUIDs. Runs in the caller's transaction.
- */
+/** Inserts each dialogue as a new row, keeping its timestamps. Returns the new UUIDs. Runs in the caller's transaction. */
 async function insertDialogues(
     connection: PoolConnection,
     projectId: string,

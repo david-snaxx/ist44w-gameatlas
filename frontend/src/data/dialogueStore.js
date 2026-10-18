@@ -1,42 +1,34 @@
-import { STARTER_DIALOGUES } from './starterDialogues.js'
+import * as dialoguesApi from '../api/dialogues.js'
+import { renameAssetInDialogue } from './dialogueGraph.js'
 
 /*
- * Where saved dialogues live until the backend exists (PLAN.md Phase 2): the browser's localStorage.
- * Same pattern as the blueprint and asset stores: read with useDialogues(), change only through these functions.
- * The dialogue shape is described at the top of dialogueGraph.js.
+ * The current project's dialogues, loaded from the server once per page load and kept in memory. Read them with
+ * useDialogues() and change them only through the functions below, which wait for the server's answer. The
+ * dialogue shape is described at the top of dialogueGraph.js.
  */
 
-const STORAGE_KEY = 'gameatlas.dialogues.v1'
 const listeners = new Set()
-let dialogues = load()
 
-function load() {
-  try {
-    const stored = window.localStorage.getItem(STORAGE_KEY)
-    if (stored === null) {
-      return STARTER_DIALOGUES
-    }
-    const parsed = JSON.parse(stored)
-    if (!Array.isArray(parsed)) {
-      return STARTER_DIALOGUES
-    }
-    return parsed
-  } catch {
-    return STARTER_DIALOGUES
-  }
-}
+/**
+ * What's in memory. `projectId` is null when there's no project (nobody is logged in), and `status` is 'loading',
+ * 'ready' or 'failed' (`error` says why).
+ */
+let cache = { projectId: null, status: 'loading', dialogues: [], error: null }
 
-// Replaces the list, saves it, and tells every subscriber (so the pages re-render)
+/** The project whose list is on its way, so pages asking at once share one request. */
+let loadingFor = null
+
+/** Replaces what's in memory and notifies every subscriber, so the pages re-render. */
 function commit(next) {
-  dialogues = next
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-  } catch {
-    // Storage can be unavailable (e.g. a private window). Keep working in memory.
-  }
+  cache = next
   for (const listener of listeners) {
     listener()
   }
+}
+
+/** Replaces just the list. */
+function commitDialogues(nextDialogues) {
+  commit({ projectId: cache.projectId, status: cache.status, dialogues: nextDialogues, error: cache.error })
 }
 
 export function subscribe(listener) {
@@ -47,48 +39,103 @@ export function subscribe(listener) {
   }
 }
 
+// Each returns the same object until something changes, which is what useSyncExternalStore needs
 export function getDialogues() {
-  return dialogues
+  return cache.dialogues
 }
 
-/** Adds new dialogues and replaces existing ones (matched by `id`) in one change. */
-export function saveDialogues(changedDialogues) {
-  const next = []
+export function getDialogueCache() {
+  return cache
+}
 
-  // Existing dialogues keep their place; a changed one is swapped in
-  for (const dialogue of dialogues) {
-    const changed = changedDialogues.find((candidate) => candidate.id === dialogue.id)
-    if (changed) {
-      next.push(changed)
-    } else {
-      next.push(dialogue)
+/** Loads a project's dialogues, once per page load and again for a different project. null empties the list. */
+export function loadDialogues(projectId) {
+  if (projectId === null) {
+    loadingFor = null
+    if (cache.projectId !== null) {
+      commit({ projectId: null, status: 'ready', dialogues: [], error: null })
     }
+    return
   }
 
-  // Dialogues that didn't exist yet go at the end
-  for (const dialogue of changedDialogues) {
-    const alreadyExists = dialogues.some((existing) => existing.id === dialogue.id)
-    if (!alreadyExists) {
-      next.push(dialogue)
-    }
+  if (loadingFor === projectId) {
+    return
+  }
+  if (cache.projectId === projectId && cache.status === 'ready') {
+    return
+  }
+  loadingFor = projectId
+  // Don't keep showing another project's dialogues meanwhile
+  if (cache.projectId !== projectId) {
+    commit({ projectId: projectId, status: 'loading', dialogues: [], error: null })
+  }
+  load(projectId)
+}
+
+/** Fetches the project's list into memory, unless another project was asked for meanwhile. */
+async function load(projectId) {
+  const result = await dialoguesApi.listDialogues(projectId)
+  if (loadingFor !== projectId) {
+    return
+  }
+  loadingFor = null
+
+  if (result.error) {
+    commit({ projectId: projectId, status: 'failed', dialogues: [], error: result.error })
+    return
+  }
+  commit({ projectId: projectId, status: 'ready', dialogues: result.data, error: null })
+}
+
+/**
+ * Saves a dialogue (no `id` for a new one) and waits for the server, whose answer replaces it in the list. An
+ * unfinished tree can be saved. Answers { data } or { error }.
+ */
+export async function saveDialogue(dialogue) {
+  const projectId = cache.projectId
+  if (projectId === null) {
+    return { error: 'Log in to save dialogues.' }
   }
 
-  commit(next)
+  let result
+  if (dialogue.id) {
+    result = await dialoguesApi.updateDialogue(projectId, dialogue.id, dialogue)
+  } else {
+    result = await dialoguesApi.createDialogue(projectId, dialogue)
+  }
+  // Ignore a refusal, or an answer for a project that's no longer current
+  if (result.error || cache.projectId !== projectId) {
+    return result
+  }
+  commitDialogues(withDialogue(cache.dialogues, result.data))
+  return result
 }
 
-export function deleteDialogue(id) {
-  commit(dialogues.filter((dialogue) => dialogue.id !== id))
+/** Deletes a dialogue and waits for the server; only then does it leave the list. Answers { data } or { error }. */
+export async function deleteDialogue(id) {
+  const projectId = cache.projectId
+  if (projectId === null) {
+    return { error: 'Log in to delete dialogues.' }
+  }
+
+  const result = await dialoguesApi.deleteDialogue(projectId, id)
+  if (result.error || cache.projectId !== projectId) {
+    return result
+  }
+  commitDialogues(cache.dialogues.filter((dialogue) => dialogue.id !== id))
+  return result
 }
 
-/** Replaces every dialogue at once (restoring a backup, resetting). */
-export function replaceDialogues(nextDialogues) {
-  commit(nextDialogues)
+/** Puts a project's whole list in memory at once: the server's answer after replacing the whole project. */
+export function replaceDialogues(projectId, nextDialogues) {
+  loadingFor = null
+  commit({ projectId: projectId, status: 'ready', dialogues: nextDialogues, error: null })
 }
 
-/** Keeps dialogues pointing at a blueprint whose ID was changed. */
+/** Points dialogues in memory at a renamed blueprint's new ID, matching what the server already did. */
 export function retargetDialogueBlueprint(fromId, toId) {
   const next = []
-  for (const dialogue of dialogues) {
+  for (const dialogue of cache.dialogues) {
     const updated = { ...dialogue }
     if (updated.speakerBlueprint === fromId) {
       updated.speakerBlueprint = toId
@@ -98,5 +145,38 @@ export function retargetDialogueBlueprint(fromId, toId) {
     }
     next.push(updated)
   }
-  commit(next)
+  commitDialogues(next)
+}
+
+/** Moves speakers and given items in memory from an asset's old ID to its new one, matching what the server did. */
+export function moveAssetLinks(blueprintId, fromKey, toKey) {
+  const next = []
+  for (const dialogue of cache.dialogues) {
+    // null when the dialogue doesn't use the asset
+    const renamed = renameAssetInDialogue(dialogue, blueprintId, fromKey, toKey)
+    if (renamed) {
+      next.push(renamed)
+    } else {
+      next.push(dialogue)
+    }
+  }
+  commitDialogues(next)
+}
+
+/** A copy of the list with `saved` in place of the dialogue with the same id, or added at the end. */
+function withDialogue(dialogues, saved) {
+  const next = []
+  let found = false
+  for (const dialogue of dialogues) {
+    if (dialogue.id === saved.id) {
+      next.push(saved)
+      found = true
+    } else {
+      next.push(dialogue)
+    }
+  }
+  if (!found) {
+    next.push(saved)
+  }
+  return next
 }

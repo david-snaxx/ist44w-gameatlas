@@ -1,86 +1,100 @@
+import {getMe} from './users.js'
+
 /*
- * Who is logged in, shared by the whole app.
- *
- * The browser can't work this out on its own: the session cookie is httpOnly, so JavaScript can't
- * read it. The only way to know is to ask the server (GET /api/users/me), which answers with the
- * user or 401. This asks once and keeps the answer, so the sidebar and the account page agree
- * without each making their own request.
- *
- * Components read it with useCurrentUser(). This mirrors blueprintStore.js, which does the same job
- * for blueprints.
+ * Stores the logged-in user in the app's memory.
+ * The user is read with useCurrentUser() and loaded from the server once per page load.
+ * The session cookie is httpOnly, so asking the server is the only way to know who is logged in.
  */
 
+/** The functions to call whenever the answer changes (see subscribe()). */
 const listeners = new Set()
 
-// checked: has the server answered yet? Until it has, nothing should claim nobody is logged in.
-let currentUser = { checked: false, user: null }
+/**
+ * The current answer. Takes the form { checked, user } where:
+ * - checked: false until the server has answered
+ * - user: the logged-in {@link User}, or null when nobody is logged in
+ */
+let currentUser = {
+    checked: false,
+    user: null
+}
 
-// The request that is in the air, so several components starting at once only cause one
+/** The request on its way, so components asking at once share one. */
 let asking = null
 
-// Replaces the answer and tells every subscriber (so the pages re-render)
+/**
+ * Replaces the answer and notifies every subscriber, so the pages re-render.
+ * @param next The new answer.
+ */
 function commit(next) {
-  currentUser = next
-  for (const listener of listeners) {
-    listener()
-  }
+    currentUser = next
+    for (const listener of listeners) {
+        listener()
+    }
 }
 
+/**
+ * Adds a function to call whenever the answer changes, and returns the function that removes it again.
+ * useSyncExternalStore (in useCurrentUser()) calls both.
+ * @param listener The function to call.
+ */
 export function subscribe(listener) {
-  listeners.add(listener)
-  return function unsubscribe() {
-    listeners.delete(listener)
-  }
+    listeners.add(listener)
+    return function unsubscribe() {
+        listeners.delete(listener)
+    }
 }
 
+/** Gets the current answer. It's the same object until the answer changes, which useSyncExternalStore needs. */
 export function getCurrentUser() {
-  return currentUser
+    return currentUser
 }
 
 /**
  * Asks the server who is logged in, once per page load.
- *
- * The sidebar is rebuilt on every page, so this is called again on each one. Asking the server every
- * time would be a round trip per click for an answer that hasn't changed, so once there is an answer
- * this does nothing. The login page keeps it right with setCurrentUser().
+ * After the first answer it does nothing.
  */
 export function loadCurrentUser() {
-  if (asking) {
+    if (asking) {
+        return asking
+    }
+    if (currentUser.checked) {
+        return Promise.resolve()
+    }
+    asking = askServer()
     return asking
-  }
-  if (currentUser.checked) {
-    return Promise.resolve()
-  }
-  asking = askServer()
-  return asking
 }
 
+/** Asks GET /api/users/me who is logged in, and keeps the answer. */
 async function askServer() {
-  try {
-    const response = await fetch('/api/users/me')
-    if (response.ok) {
-      const user = await response.json()
-      commit({ checked: true, user: user })
-    } else {
-      // 401 is the ordinary "nobody is logged in" answer, not a failure
-      commit({ checked: true, user: null })
+    const result = await getMe()
+    // A 401 means nobody is logged in; an unreachable backend counts as that too, so the app doesn't wait forever
+    let user = null
+    if (!result.error) {
+        user = result.data
     }
-  } catch {
-    // The backend isn't running. Count that as logged out so the app doesn't wait forever.
-    commit({ checked: true, user: null })
-  }
-  asking = null
+    commit({
+        checked: true,
+        user: user
+    })
+    asking = null
 }
 
 /**
- * Remembers the user the login page was just handed, so the sidebar shows their name straight away
- * instead of asking the server for something it already knows.
+ * Remembers the user the login page was just handed, without asking the server again.
+ * @param user The logged-in {@link User}.
  */
 export function setCurrentUser(user) {
-  commit({ checked: true, user: user })
+    commit({
+        checked: true,
+        user: user
+    })
 }
 
-/** Forgets the user after logging out, so the sidebar and every open page update together. */
+/** Forgets the user after logging out. */
 export function clearCurrentUser() {
-  commit({ checked: true, user: null })
+    commit({
+        checked: true,
+        user: null
+    })
 }

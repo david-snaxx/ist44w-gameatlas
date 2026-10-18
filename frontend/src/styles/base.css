@@ -1,11 +1,6 @@
 /*
- * GameAtlas global stylesheet: the reset, a few utilities, and every shared component's look.
- * Values come from tokens.css.
- *
- * Each component has one block below with all of its rules, so everything that styles a class
- * is in one place. Naming is `.thing`, `.thing-part` and `.is-state`. Page layout that only one
- * page needs lives in that page's .module.css, which loads after this file and so wins on
- * equal specificity.
+ * The reset, utilities, page layout, and one block per shared component holding all of its rules.
+ * Naming is `.thing`, `.thing-part` and `.is-state`; values come from tokens.css.
  */
 
 /* ============================================================ Reset */
@@ -258,6 +253,38 @@ body::before {
 .nav-item.is-active {
   background: var(--color-accent-soft);
   color: var(--color-accent-text);
+}
+
+/* One project's section: a native <details>, so clicking its name (the <summary>) folds everything under it */
+.nav-project-name {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.nav-project-name:hover {
+  background: var(--color-hover-overlay);
+}
+
+/* The project's groups, spaced like the sidebar's own and set in a little under its name */
+.nav-project-groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-2) 0 0 var(--space-3);
+}
+
+/* A short message in place of links, such as when the projects couldn't be loaded */
+.nav-note {
+  padding: 0 var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
 }
 
 /* The account link sits at the foot of the sidebar, under whatever space is left */

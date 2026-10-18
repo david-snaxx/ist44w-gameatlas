@@ -2,7 +2,7 @@
 --   mysql -u gameatlas -p gameatlas < backend/sql/tables.sql
 --
 -- `users` already exists and is listed here only so the whole schema is in one place.
--- A project owns everything in it, so every table below cascades when its project is deleted.
+-- A project owns everything in it, so every table after `projects` cascades when its project is deleted.
 
 CREATE TABLE IF NOT EXISTS users (
     id CHAR(36) PRIMARY KEY,
@@ -11,6 +11,14 @@ CREATE TABLE IF NOT EXISTS users (
     display_name VARCHAR(64) NOT NULL,
     created_at DATETIME NOT NULL,
     project_ids JSON NOT NULL
+);
+
+-- Login sessions, in express-mysql-session's own layout (don't rename the columns). `session_id` is the ID in the
+-- browser's cookie (case-sensitive, hence utf8mb4_bin), `expires` is in Unix seconds, and `data` is the session as JSON.
+CREATE TABLE IF NOT EXISTS sessions (
+    session_id VARCHAR(128) COLLATE utf8mb4_bin NOT NULL PRIMARY KEY,
+    expires INT UNSIGNED NOT NULL,
+    data MEDIUMTEXT COLLATE utf8mb4_bin
 );
 
 CREATE TABLE IF NOT EXISTS projects (

@@ -1,8 +1,6 @@
 /*
- * Assets: one thing made from a blueprint (called a *document* in saved data, the API and the database).
- * This is the saved shape (PLAN.md §5.4). Values are typed: numbers are numbers, and empty optional values are null.
- * (While editing, the form holds strings for numbers instead; toFormValues() and toData() in
- * frontend/src/data/assetData.js convert between the two.)
+ * Assets (documents in saved data, the API and the database) in their saved shape (PLAN.md §5.4): numbers are
+ * numbers, and empty optional values are null.
  */
 
 /** One filled-in {@link Blueprint}, e.g. the "Sword of Fire" made from the Item blueprint. */
@@ -55,8 +53,8 @@ export interface Vector3 {
 }
 
 /**
- * The engine-facing asset file (toExport() in frontend/src/data/assetData.js). "Download all" writes an array of these.
- * Values stay nested under `data`, so a property called "id" can't clash with the asset's own ID.
+ * The engine-facing asset file made by toExport(). Values stay under `data`, so a property called "id" can't clash
+ * with the asset's own ID.
  */
 export interface AssetExport {
     /** The {@link Asset}'s `key` (not its internal UUID). */
@@ -69,10 +67,7 @@ export interface AssetExport {
     data: AssetData
 }
 
-/**
- * Problems with an asset's values (validateValues() in frontend/src/schema/validation.js): { [path]: message }.
- * A path joins property IDs with dots, and list items use their index: { "stats.strength": "Must be 0 or more" }.
- */
+/** Problems with an asset's values, by path: { "stats.strength": "Must be 0 or more" }. List items use their index. */
 export interface ValueErrors {
     /** The message shown under that property's input. */
     [path: string]: string

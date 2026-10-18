@@ -4,6 +4,7 @@ import AppShell from '../../components/AppShell/AppShell.jsx'
 import Badge from '../../components/Badge/Badge.jsx'
 import Button from '../../components/Button/Button.jsx'
 import EmptyState from '../../components/EmptyState/EmptyState.jsx'
+import LoadingRecord from '../../components/LoadingRecord/LoadingRecord.jsx'
 import ValueRenderer from '../../components/form/ValueRenderer.jsx'
 import JsonPreview from '../../components/JsonPreview/JsonPreview.jsx'
 import LinkList from '../../components/LinkList/LinkList.jsx'
@@ -23,9 +24,9 @@ import {
   parseAssetFile,
 } from '../../data/assetData.js'
 import { dialogueLinksToAsset } from '../../data/dialogueGraph.js'
-import { useAssets } from '../../data/useAssets.js'
+import { useAsset, useAssets } from '../../data/useAssets.js'
 import { useDialogues } from '../../data/useDialogues.js'
-import { useBlueprints } from '../../schema/useBlueprints.js'
+import { useBlueprint, useBlueprints } from '../../schema/useBlueprints.js'
 import { validateValues } from '../../schema/validation.js'
 import { downloadJson } from '../../utils/downloadJson.js'
 import { formatDateTime } from '../../utils/formatDate.js'
@@ -42,12 +43,18 @@ function AssetViewPage() {
   const navigate = useNavigate()
   const toast = useToast()
 
-  const blueprint = blueprints.find((candidate) => candidate.id === blueprintId)
-  let asset = null
-  if (blueprint) {
-    asset = assets.find((candidate) => candidate.schemaId === blueprint.id && candidate.key === assetKey)
+  const savedBlueprint = useBlueprint(blueprintId)
+  const saved = useAsset(blueprintId, assetKey)
+
+  if (savedBlueprint.status === 'loading' || savedBlueprint.status === 'failed') {
+    return <LoadingRecord error={savedBlueprint.error} />
+  }
+  if (saved.status === 'loading' || saved.status === 'failed') {
+    return <LoadingRecord error={saved.error} />
   }
 
+  const blueprint = savedBlueprint.blueprint
+  const asset = saved.asset
   if (!blueprint || !asset) {
     return <MissingAsset blueprint={blueprint} blueprintId={blueprintId} assetKey={assetKey} />
   }

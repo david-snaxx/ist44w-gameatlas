@@ -5,16 +5,10 @@ import Table from '../Table/Table.jsx'
 import { plural } from '../../utils/plural.js'
 
 /**
- * The shape every "all the X" page has: a heading with buttons, an optional search
- * toolbar, and a table that falls back to an empty state.
- *
- * The page keeps its own data and search state and passes already-filtered `rows`,
- * plus `total` (how many there are before filtering) so the empty states can tell
- * "nothing yet" from "nothing matches".
- *
- * noun: the thing being listed, e.g. "asset" — used for the count and the search placeholder
- * onSearch: shows a search box when given
- * toolbarExtra: more filters shown next to the search box
+ * Every "all the X" page: a heading with buttons, an optional search toolbar, and a table or empty state.
+ * rows: already filtered by the page; total: how many before filtering ("nothing yet" vs "nothing matches")
+ * noun: e.g. "asset", for the count and search placeholder
+ * onSearch: shows a search box when given; toolbarExtra: more filters beside it
  * empty: what to show when there are none at all (usually an <EmptyState>)
  */
 function ListPage({

@@ -5,12 +5,9 @@ import { plural } from '../utils/plural.js'
 import { validateDialogueDetails } from './dialogueGraph.js'
 
 /*
- * A backup is one JSON file with everything GameAtlas stores, exactly as it's stored (dialogue layouts included):
- *   { app: "GameAtlas", type: "backup", formatVersion, createdAt, blueprints, assets, dialogues }
- * It's for restoring GameAtlas itself, not for game engines (those use the per-asset and per-dialogue files).
- *
- * This file is plain logic with no stores, so the backend imports it too: checkContents() is what
- * PUT /api/projects/:id/contents runs before it replaces a project's contents. Changing the stores is in backup.js.
+ * The backup file: a project's contents exactly as saved, layouts included, for restoring GameAtlas (not for game
+ * engines): { app: "GameAtlas", type: "backup", formatVersion, createdAt, blueprints, assets, dialogues }.
+ * Plain logic, so the backend imports it too.
  */
 
 const BACKUP_FORMAT_VERSION = 1
@@ -116,13 +113,9 @@ export function describeContents(data) {
 // ---------- Checking a whole set before it replaces a project's contents ----------
 
 /**
- * Checks a whole set { blueprints, assets, dialogues } against itself, before it replaces everything in a project.
- * Nothing that's already saved is looked at. Returns a message about the first problem found, or null when the
- * set can be saved.
- *
- * Only the structure is checked. Problems the editors already show, and let people fix later, are allowed:
- * links to blueprints or assets that aren't in the set, asset values that break their property's rules,
- * and unfinished dialogue trees.
+ * Checks a whole { blueprints, assets, dialogues } set against itself before it replaces a project. Returns the first
+ * problem's message, or null. Only structure is checked: problems the editors show (links to missing blueprints or
+ * assets, bad values, unfinished trees) are allowed.
  */
 export function checkContents(contents) {
   if (!isObject(contents)) {
@@ -147,7 +140,6 @@ export function checkContents(contents) {
 
 // Blueprints need a valid name and ID, an ID no other blueprint in the set uses, and valid properties
 function checkBlueprints(blueprints) {
-  // The checks below can only read blueprints that have the right shape, so those come first
   for (let index = 0; index < blueprints.length; index++) {
     const blueprint = blueprints[index]
     if (!isReadableBlueprint(blueprint)) {
@@ -155,19 +147,18 @@ function checkBlueprints(blueprints) {
     }
   }
 
-  // A link may point at a blueprint that isn't in the set: the builder shows that as "That blueprint no longer
-  // exists" and lets people fix it later. So every blueprint a link names counts as one that exists.
+  // Every blueprint a link names counts as existing: a link to a missing one is a problem the builder shows
   const linkableIds = []
   for (const blueprint of blueprints) {
     linkableIds.push(blueprint.id)
     collectLinkTargets(blueprint.fields, linkableIds)
   }
 
-  // Each blueprint is checked against the ones before it, so the second use of an ID is the one reported
+  // Checked against the ones before it, so the second use of an ID is the one reported
   const earlierIds = []
   for (let index = 0; index < blueprints.length; index++) {
     const blueprint = blueprints[index]
-    // validateBlueprint() reads drafts, whose `uid`s also let it spot repeated property IDs
+    // A draft's `uid`s let validateBlueprint() spot repeated property IDs
     const draft = toDraft(blueprint)
     const errors = validateBlueprint(draft, { otherIds: earlierIds, blueprintIds: linkableIds })
     const problem = firstBlueprintProblem(draft, errors)
@@ -186,8 +177,7 @@ function checkAssets(assets, blueprints) {
     blueprintIds.push(blueprint.id)
   }
 
-  // The assets checked so far, as validateAssetKey() reads them: [{ key }]. They have no `id`,
-  // so every one with the same ID counts as a clash.
+  // The assets checked so far. They have no `id`, so validateAssetKey() counts every same ID as a clash.
   const earlierAssets = []
   for (let index = 0; index < assets.length; index++) {
     const asset = assets[index]
@@ -232,7 +222,7 @@ function checkDialogues(dialogues) {
   return null
 }
 
-// How a message names an item: by its ID when it has one, otherwise by its place in the list ("Asset 3")
+// How a message names an item: by its ID, or by its place in the list ("Asset 3")
 function itemName(kind, id, index) {
   if (typeof id === 'string' && id !== '') {
     return `${kind} "${id}"`
@@ -247,7 +237,7 @@ function firstBlueprintProblem(draft, errors) {
     return null
   }
 
-  // A group is either `blueprint` (its name, ID and "no properties") or one property's errors under its uid
+  // A group is `blueprint` (name, ID, "no properties") or one property's errors under its uid
   const group = groups[0]
   const setting = Object.keys(errors[group])[0]
   const message = errors[group][setting]
@@ -286,7 +276,7 @@ function collectLinkTargets(fields, targets) {
   }
 }
 
-// ---------- Shape checks: can the checks above read an item at all? ----------
+// ---------- Shape checks: can the checks above read an item? ----------
 
 // True for undefined, null or a string: an optional text setting
 function isOptionalText(value) {
@@ -334,7 +324,7 @@ function hasReadableFields(fields) {
   return true
 }
 
-// A list's item type: missing (the builder reads that as short text), or a known type other than a list or group
+// A list's item type: missing (read as short text), or a known type other than a list or group
 function isReadableItemType(itemType) {
   if (itemType === undefined || itemType === null) {
     return true
@@ -386,8 +376,7 @@ function isReadableDialogue(dialogue) {
   return Array.isArray(dialogue.nodes) && Array.isArray(dialogue.edges)
 }
 
-// A dialogue's speaker or item blueprint: none (missing or ''), or written like a blueprint ID.
-// It doesn't have to be in the set: the dialogue editor shows a missing blueprint as a problem to fix.
+// A dialogue's speaker or item blueprint: none (missing or ''), or written like a blueprint ID (it needn't be in the set)
 function isOptionalBlueprintId(value) {
   if (value === undefined || value === null || value === '') {
     return true

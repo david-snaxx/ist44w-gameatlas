@@ -10,6 +10,7 @@ import PropertyRow from '../../components/form/PropertyRow.jsx'
 import TextArea from '../../components/form/TextArea.jsx'
 import TextInput from '../../components/form/TextInput.jsx'
 import JsonPreview from '../../components/JsonPreview/JsonPreview.jsx'
+import LoadingRecord from '../../components/LoadingRecord/LoadingRecord.jsx'
 import MissingRecord from '../../components/MissingRecord/MissingRecord.jsx'
 import { ImportNotice } from '../../components/Notice/Notice.jsx'
 import Section from '../../components/Section/Section.jsx'
@@ -39,7 +40,7 @@ import { deleteAssetsOfBlueprint, moveAssetsToBlueprint } from '../../data/asset
 import { retargetDialogueBlueprint } from '../../data/dialogueStore.js'
 import { useAssets } from '../../data/useAssets.js'
 import { deleteBlueprint, saveBlueprint } from '../../schema/blueprintStore.js'
-import { useBlueprints } from '../../schema/useBlueprints.js'
+import { useBlueprint, useBlueprints } from '../../schema/useBlueprints.js'
 import {
   countProblems,
   onlyTouchedErrors,
@@ -59,13 +60,18 @@ const PREVIEW_TABS = [
 ]
 
 /**
- * Route component for /blueprints/new and /blueprints/:blueprintId.
- * The `key` makes React build a brand-new BlueprintBuilder (with fresh state) whenever the URL
- * points at a different blueprint, instead of reusing the old one's state.
+ * Route component for /blueprints/new and /blueprints/:blueprintId. The `key` gives every blueprint a fresh
+ * BlueprintBuilder instead of reusing the previous one's state.
  */
 function BlueprintBuilderPage() {
   const { blueprintId } = useParams()
   const location = useLocation()
+  const saved = useBlueprint(blueprintId)
+
+  // The builder's state starts from the saved blueprint, so wait for the list (a new one too: its ID is checked)
+  if (saved.status === 'loading' || saved.status === 'failed') {
+    return <LoadingRecord error={saved.error} />
+  }
 
   // location.state is what the page that sent us here passed along (an import or a duplicate), if anything
   const state = location.state ?? {}
@@ -79,6 +85,7 @@ function BlueprintBuilderPage() {
     <BlueprintBuilder
       key={editorKey}
       blueprintId={blueprintId}
+      savedBlueprint={saved.blueprint}
       importedDefinition={state.imported}
       origin={state.origin}
       originName={state.originName}
@@ -87,10 +94,11 @@ function BlueprintBuilderPage() {
 }
 
 /**
+ * savedBlueprint: the blueprint as the server last saved it, or null (a new one, or the URL's doesn't exist)
  * importedDefinition: a definition to start a new blueprint from (an imported file or a duplicate)
  * origin: 'file' (the default) | 'duplicate'; originName: the name of the blueprint that was duplicated
  */
-function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName }) {
+function BlueprintBuilder({ blueprintId, savedBlueprint, importedDefinition, origin, originName }) {
   const isDuplicate = origin === 'duplicate'
   // An imported file's ID is kept as-is; a duplicate's ID keeps following its name
   const importedIdIsFixed = Boolean(importedDefinition?.id) && !isDuplicate
@@ -99,10 +107,10 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
   const navigate = useNavigate()
   const toast = useToast()
 
-  // The last saved definition (null for a blueprint that hasn't been saved yet).
+  // The last saved definition (null for a new blueprint), replaced by the server's answer after each save
+  const [baseline, setBaseline] = useState(savedBlueprint)
+  // The blueprint being edited (see schema/blueprintDraft.js for draft vs. definition).
   // `useState(() => …)` only runs the function the first time.
-  const [baseline, setBaseline] = useState(() => findSavedBlueprint(blueprints, blueprintId))
-  // The blueprint being edited (see schema/blueprintDraft.js for draft vs. definition)
   const [draft, setDraft] = useState(() => startingDraft(baseline, importedDefinition))
   const [idTouched, setIdTouched] = useState(Boolean(baseline) || importedIdIsFixed)
   const [metaTouched, setMetaTouched] = useState({})
@@ -113,6 +121,8 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
   const [previewTab, setPreviewTab] = useState('form')
   const [sampleValues, setSampleValues] = useState({})
   const [touchedPaths, setTouchedPaths] = useState([])
+  // True while a save or delete waits for the server, so the buttons can't send it twice
+  const [sending, setSending] = useState(false)
 
   // ---------- Derived data (recalculated on every render) ----------
 
@@ -148,8 +158,7 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
 
   // ---------- Leaving with unsaved changes ----------
 
-  // In-app navigation (sidebar, breadcrumbs, back button) asks for confirmation.
-  // (A hook, so it has to run on every render, before the "not found" return below.)
+  // (A hook, so it has to run on every render, before the "not found" return below)
   const { blocker, allowLeaving } = useUnsavedChanges(isDirty)
 
   if (blueprintId && !baseline) {
@@ -282,32 +291,36 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
 
   // ---------- Saving, discarding, deleting, exporting ----------
 
-  function handleSave() {
+  async function handleSave() {
     setShowAllErrors(true)
     if (problemCount > 0) {
       toast.show({ status: 'error', message: `Fix ${plural(problemCount, 'problem')} before saving` })
       return
     }
 
-    // The version goes up by one every time a changed blueprint is saved
-    let version = 1
+    let previousId = null
     if (baseline) {
-      version = baseline.version
-      if (isDirty) {
-        version++
-      }
+      previousId = baseline.id
     }
-    const saved = { ...definition, version: version }
-    saveBlueprint(saved, baseline?.id)
+    setSending(true)
+    const result = await saveBlueprint(definition, previousId)
+    setSending(false)
 
-    // Assets and dialogues follow their blueprint when its ID changes
+    if (result.error) {
+      toast.show({ status: 'error', message: result.error })
+      return
+    }
+
+    const saved = result.data
+    // A new ID: assets and dialogues in memory follow what the server already moved
     if (baseline && baseline.id !== saved.id) {
       moveAssetsToBlueprint(baseline.id, saved.id)
       retargetDialogueBlueprint(baseline.id, saved.id)
     }
 
     setBaseline(saved)
-    setDraft({ ...draft, version: saved.version })
+    // The server trims the name and decides the version
+    setDraft({ ...draft, name: saved.name, version: saved.version })
     setShowAllErrors(false)
     setMetaTouched({})
     toast.show({ status: 'success', message: 'Blueprint saved' })
@@ -326,11 +339,20 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
     setMetaTouched({})
   }
 
-  function handleDelete() {
+  async function handleDelete() {
     setConfirmDelete(false)
-    allowLeaving()
-    deleteBlueprint(baseline.id)
+    setSending(true)
+    const result = await deleteBlueprint(baseline.id)
+    setSending(false)
+
+    if (result.error) {
+      toast.show({ status: 'error', message: result.error })
+      return
+    }
+
+    // The server deleted its assets too
     deleteAssetsOfBlueprint(baseline.id)
+    allowLeaving()
     toast.show({ status: 'success', message: `Blueprint "${baseline.name}" deleted` })
     navigate('/blueprints', { replace: true })
   }
@@ -467,14 +489,20 @@ function BlueprintBuilder({ blueprintId, importedDefinition, origin, originName 
           }
           footer={
             <>
-              <Button variant="primary" icon={Save} onClick={handleSave}>
+              <Button variant="primary" icon={Save} disabled={sending} onClick={handleSave}>
                 Save blueprint
               </Button>
-              <Button icon={RotateCcw} disabled={!isDirty} onClick={handleDiscard}>
+              <Button icon={RotateCcw} disabled={!isDirty || sending} onClick={handleDiscard}>
                 Discard changes
               </Button>
               {baseline && (
-                <Button variant="danger" icon={Trash2} className="push-right" onClick={() => setConfirmDelete(true)}>
+                <Button
+                  variant="danger"
+                  icon={Trash2}
+                  className="push-right"
+                  disabled={sending}
+                  onClick={() => setConfirmDelete(true)}
+                >
                   Delete
                 </Button>
               )}
@@ -595,15 +623,6 @@ function PropertyPanel({ editor, setEditor, draftFields, errors, blueprintOption
 }
 
 // ---------- Helpers ----------
-
-// The saved blueprint for this URL, or null for a new one (or when the URL's blueprint doesn't exist)
-function findSavedBlueprint(blueprints, blueprintId) {
-  if (!blueprintId) {
-    return null
-  }
-  const found = blueprints.find((blueprint) => blueprint.id === blueprintId)
-  return found ?? null
-}
 
 // The draft the builder starts with (and goes back to on Discard)
 function startingDraft(baseline, importedDefinition) {

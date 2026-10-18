@@ -46,7 +46,7 @@ function SignUpPage() {
 
     // Signing up doesn't log anyone in, so this goes to the login page with the email filled in
     toast.show({ status: 'success', message: 'Account created. Log in to continue.' })
-    navigate('/login', { state: { email: result.user.email } })
+    navigate('/login', { state: { email: result.data.email } })
   }
 
   return (
@@ -82,12 +82,8 @@ function SignUpPage() {
 }
 
 /**
- * What's wrong with the form before it's worth sending, by field name. An empty object means
- * there's nothing wrong.
- *
- * These are the same rules the backend keeps, checked here as well so the answer is instant and
- * lands under the right box. The backend is still the one that decides (CLAUDE.md), and it's the
- * only one that can tell whether the email is already registered.
+ * What's wrong with the form before it's worth sending, by field name. The backend's own rules, checked here too so
+ * the answer is instant; only the backend can tell whether the email is already registered.
  */
 function findProblems(email, password, displayName) {
   const problems = {}

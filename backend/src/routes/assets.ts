@@ -10,11 +10,7 @@ import { validateAssetKey, validateValues } from '../../../frontend/src/schema/v
 import { referenceKeysFor, replaceReferences, toFormValues } from '../../../frontend/src/data/assetData.js';
 import { renameAssetInDialogue } from '../../../frontend/src/data/dialogueGraph.js';
 
-/*
- * Assets live inside a project and are made from one blueprint. Their `id` is the row's UUID, so
- * /assets/:id needs no project of its own; `?projectId=…` (GET, DELETE) and `projectId` in the body
- * (POST, PUT) say which project the caller means, and the row has to belong to it.
- */
+/* An asset's `id` is its row's UUID; `projectId` still says which project the caller means. */
 
 // region Express Routing
 export const assetsRouter = express.Router();
@@ -89,7 +85,6 @@ async function postAsset(request: Request, response: Response) {
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
 
     try {
-        // The row and the project's list of assets are one change, so they share a transaction
         await withTransaction(async (connection) => {
             await connection.query(insertQuery, [
                 id,
@@ -115,9 +110,8 @@ async function postAsset(request: Request, response: Response) {
 
 /**
  * PUT /assets/:id
- * Body: { projectId, key, data }. Saving re-stamps the asset with the blueprint's current version.
- * A `key` that differs from the saved one renames the asset, and every link to it follows in the same
- * transaction: in other assets, in dialogues, and in the asset's own data.
+ * Body: { projectId, key, data }. Stamps the asset with the blueprint's current version. A different `key`
+ * renames it, and every link to it follows in the same transaction.
  */
 async function putAsset(request: Request<{ id: string }>, response: Response) {
     const { projectId, key, data } = request.body ?? {};
@@ -139,7 +133,7 @@ async function putAsset(request: Request<{ id: string }>, response: Response) {
 
     const isRenamed = typeof key === 'string' && key !== existing.key;
 
-    // Links from the asset to itself follow its new ID, like the links in other assets and dialogues do
+    // Links from the asset to itself follow the new ID
     let newData = data;
     if (isRenamed && isPlainObject(data)) {
         newData = replaceReferences(blueprint.fields, data, blueprint.id, existing.key, key);
@@ -152,7 +146,6 @@ async function putAsset(request: Request<{ id: string }>, response: Response) {
 
     const updateQuery = `UPDATE assets SET asset_key = ?, schema_version = ?, data = ?, updated_at = ? WHERE id = ?`;
     try {
-        // The asset and every link to it are one change, so a rename never leaves links pointing at the old ID
         await withTransaction(async (connection) => {
             await connection.query(updateQuery, [
                 key,
@@ -201,13 +194,13 @@ async function deleteAsset(request: Request<{ id: string }>, response: Response)
 
 // region Helpers
 /**
- * SQL columns that make up an {@link Asset}. `schemaId` is the blueprint's snake_case ID, which is why
- * every read joins the blueprints table. `key` is a MySQL keyword, so it needs backticks.
+ * SQL columns of an {@link Asset}. `schemaId` comes from the joined blueprints table, and `key` needs backticks
+ * because it's a MySQL keyword.
  */
 const ASSET_COLUMNS = `a.id, a.asset_key AS \`key\`, b.schema_key AS schemaId, a.schema_version AS schemaVersion,
                        a.data, a.created_at AS createdAt, a.updated_at AS updatedAt`;
 
-/** A blueprint as the asset routes need it: its row UUID for the foreign key, plus what validation uses. */
+/** A blueprint as the asset routes need it: its row UUID plus what validation uses. */
 interface BlueprintRow {
     rowId: string;
     id: string;
@@ -215,10 +208,7 @@ interface BlueprintRow {
     fields: Blueprint['fields'];
 }
 
-/**
- * Every asset in a project, sorted by ID, or only one blueprint's when `blueprintId` (its snake_case ID) is given.
- * Also used by PUT /projects/:id/contents to answer with what it saved.
- */
+/** Every asset in a project sorted by ID, or only one blueprint's when `blueprintId` is given. */
 export async function findAssets(projectId: string, blueprintId: string | null): Promise<Asset[]> {
     let selectQuery = `SELECT ${ASSET_COLUMNS} FROM assets a JOIN blueprints b ON b.id = a.blueprint_id
                        WHERE a.project_id = ?`;
@@ -233,9 +223,7 @@ export async function findAssets(projectId: string, blueprintId: string | null):
     return rows as Asset[];
 }
 
-/**
- * Returns a single asset by its UUID, or undefined when there is none in this project.
- */
+/** One asset by its UUID, or undefined when the project has none. */
 async function findAsset(projectId: string, id: string): Promise<Asset | undefined> {
     const selectQuery = `SELECT ${ASSET_COLUMNS} FROM assets a JOIN blueprints b ON b.id = a.blueprint_id
                          WHERE a.project_id = ? AND a.id = ?`;
@@ -243,7 +231,7 @@ async function findAsset(projectId: string, id: string): Promise<Asset | undefin
     return rows[0] as Asset | undefined;
 }
 
-/** Returns the blueprint an asset is made from, by its snake_case ID within the project. */
+/** One blueprint by its snake_case ID, as the asset routes need it. */
 async function findBlueprintRow(projectId: string, schemaId: unknown): Promise<BlueprintRow | undefined> {
     if (typeof schemaId !== 'string' || schemaId === '') {
         return undefined;
@@ -255,12 +243,8 @@ async function findBlueprintRow(projectId: string, schemaId: unknown): Promise<B
 }
 
 /**
- * Checks an asset sent by a client. Returns one entry per problem, in the shape the form shows inline:
- * [{ path, message }] (PLAN.md §6). An empty list means there's nothing wrong.
- *
- * The values go through the frontend's own validateValues(), so the browser and the server agree about
- * what a valid asset is. `currentAssetId` is the asset being updated, or null when creating one, so its
- * own ID doesn't count as a clash, and links to it are checked against the ID it's being saved with.
+ * Checks an asset sent by a client with the frontend's own validators. Returns [{ path, message }], empty when
+ * nothing is wrong. `currentAssetId` is the asset being updated, or null for a new one.
  */
 async function validateAssetBody(
     projectId: string,
@@ -282,8 +266,7 @@ async function validateAssetBody(
         problems.push({ path: 'key', message: keyError });
     }
 
-    // What links in this asset are allowed to point at: every blueprint's assets in this project. The asset
-    // being updated counts under its new ID, since a rename moves its links to itself to the new ID too.
+    // What links may point at: every asset in the project, with the one being updated under its new ID
     const blueprints = await findBlueprintsForLinks(projectId);
     const savedAssets = await findAssetsForLinks(projectId);
     const assets: { schemaId: string; key: string }[] = [];
@@ -296,9 +279,9 @@ async function validateAssetBody(
     }
     const referenceKeys = referenceKeysFor(blueprints, assets);
 
-    // validateValues() expects form values (numbers as text), which is what toFormValues() makes from saved data
+    // validateValues() expects form values (numbers as text)
     const values = toFormValues(blueprint.fields, data);
-    // The validators are plain JavaScript, so name the shape TypeScript should see: path -> message
+    // Plain JavaScript, so name its shape: path -> message
     const valueErrors: Record<string, string> = validateValues(blueprint.fields, values, '', referenceKeys);
     for (const path of Object.keys(valueErrors)) {
         problems.push({ path: path, message: valueErrors[path] });
@@ -322,7 +305,7 @@ async function findBlueprintsForLinks(projectId: string) {
     return rows as { id: string; fields: Blueprint['fields'] }[];
 }
 
-/** Every asset in the project, as referenceKeysFor() wants them: [{ schemaId, key }], plus each one's UUID. */
+/** Every asset in the project, as referenceKeysFor() wants them: [{ id, schemaId, key }]. */
 async function findAssetsForLinks(projectId: string) {
     const selectQuery = `SELECT a.id, b.schema_key AS schemaId, a.asset_key AS \`key\` FROM assets a
                          JOIN blueprints b ON b.id = a.blueprint_id WHERE a.project_id = ?`;
@@ -331,11 +314,9 @@ async function findAssetsForLinks(projectId: string) {
 }
 
 /**
- * Points every link to asset `fromKey` of blueprint `blueprintId` at `toKey` instead: link properties in the
- * project's other assets (of any blueprint, the renamed asset's own included), and speakers and given items in
- * its dialogues. Nothing is validated here, so a problem elsewhere in a row never blocks the rename. Only rows
- * that change are written, and only their links: nobody edited them, so their updatedAt and an asset's
- * schemaVersion stay as they were. Runs in the caller's transaction, after the asset itself is renamed.
+ * Points every link to asset `fromKey` of blueprint `blueprintId` at `toKey`: in the project's other assets and in
+ * its dialogues' speakers and given items. Only changed rows are written, unvalidated, keeping their updatedAt and
+ * schemaVersion. Runs in the caller's transaction, after the rename itself.
  */
 async function renameLinksToAsset(
     connection: PoolConnection,
@@ -345,7 +326,7 @@ async function renameLinksToAsset(
     fromKey: string,
     toKey: string,
 ): Promise<void> {
-    // Each asset comes with its own blueprint's properties, which say where its links are
+    // Each asset's own blueprint properties say where its links are
     const assetQuery = `SELECT a.id, a.data, b.fields FROM assets a JOIN blueprints b ON b.id = a.blueprint_id
                         WHERE a.project_id = ? AND a.id <> ?`;
     const [assetRows] = await connection.query<RowDataPacket[]>(assetQuery, [projectId, assetId]);
@@ -356,7 +337,7 @@ async function renameLinksToAsset(
         }
     }
 
-    // renameAssetInDialogue() gives back null when the dialogue doesn't use the asset, and only changes `nodes`
+    // renameAssetInDialogue() returns null when the dialogue doesn't use the asset
     const dialogueQuery = `SELECT id, speaker_blueprint AS speakerBlueprint, item_blueprint AS itemBlueprint, nodes
                            FROM dialogues WHERE project_id = ?`;
     const [dialogueRows] = await connection.query<RowDataPacket[]>(dialogueQuery, [projectId]);

@@ -20,9 +20,8 @@ import {
 } from '../../../frontend/src/schema/blueprintDraft.js';
 
 /*
- * Blueprints live inside a project, and their `id` (snake_case, e.g. "item") is only unique within one.
- * So every route here needs a project: GET and DELETE read `?projectId=…`, POST and PUT take it in the body.
- * The row also has an internal UUID, which is what projects.blueprint_ids holds; the API never shows it.
+ * A blueprint's snake_case `id` is only unique within its project, so every route here needs `projectId`.
+ * The row's own UUID never leaves the database.
  */
 
 // region Express Routing
@@ -85,7 +84,6 @@ async function postBlueprint(request: Request, response: Response) {
         return response.status(400).json({ errors: problems });
     }
 
-    // Only the clean shape is saved: no editor-only `uid`s, no settings a property's type doesn't use
     const blueprint = cleanBlueprint({ id: id, name: name.trim(), description: description, version: 1, fields: fields });
 
     const rowId = randomUUID();
@@ -94,7 +92,6 @@ async function postBlueprint(request: Request, response: Response) {
                          VALUES (?, ?, ?, ?, ?, 'form', 1, ?, ?, ?)`;
 
     try {
-        // The row and the project's list of blueprints are one change, so they share a transaction
         await withTransaction(async (connection) => {
             await connection.query(insertQuery, [
                 rowId,
@@ -120,6 +117,7 @@ async function postBlueprint(request: Request, response: Response) {
 
 /**
  * PUT /blueprints/:id
+ * Body: { projectId, id?, name, description?, fields }. A different `id` renames the blueprint.
  */
 async function putBlueprint(request: Request<{ id: string }>, response: Response) {
     const { projectId, id, name, description, fields } = request.body ?? {};
@@ -136,7 +134,7 @@ async function putBlueprint(request: Request<{ id: string }>, response: Response
         newId = currentId;
     }
 
-    // links from this blueprint to itself follow its new ID, like the other blueprints' links do
+    // links from this blueprint to itself follow the new ID
     let newFields = fields;
     if (typeof newId === 'string' && newId !== currentId && Array.isArray(fields)) {
         newFields = renameBlueprintLinks(fields, currentId, newId);
@@ -156,7 +154,7 @@ async function putBlueprint(request: Request<{ id: string }>, response: Response
         return response.status(404).json({ message: 'Blueprint not found' });
     }
 
-    // The blueprint as this save would leave it, in the same clean shape findBlueprint() gives back
+    // In findBlueprint()'s shape, so the two can be compared
     const updated = cleanBlueprint({
         id: newId,
         name: name.trim(),
@@ -165,7 +163,7 @@ async function putBlueprint(request: Request<{ id: string }>, response: Response
         fields: newFields,
     });
 
-    // Nothing changed (a double-clicked or retried save): keep the version, so its assets don't turn "Outdated"
+    // Nothing changed: keep the version, so its assets don't turn "Outdated"
     if (JSON.stringify(updated) === JSON.stringify(existing)) {
         return response.json(existing);
     }
@@ -199,7 +197,7 @@ async function putBlueprint(request: Request<{ id: string }>, response: Response
 
 /**
  * DELETE /blueprints/:id?projectId=…
- * Deletes the blueprint and every asset made from it (PLAN.md §5.6 rule 2).
+ * Deletes the blueprint and every asset made from it.
  */
 async function deleteBlueprint(request: Request<{ id: string }>, response: Response) {
     const access = await openProject(request, request.query.projectId);
@@ -228,20 +226,15 @@ async function deleteBlueprint(request: Request<{ id: string }>, response: Respo
 // endregion
 
 // region Helpers
-/**
- * SQL columns that make up a {@link Blueprint}. `schema_key` is what the API calls `id`; the row's own
- * UUID stays inside the database. Rows go through {@link cleanBlueprint} before they're sent.
- */
+/** SQL columns of a {@link Blueprint}. `schema_key` is the `id` the API shows. */
 const BLUEPRINT_COLUMNS = 'schema_key AS id, name, description, kind, version, fields';
 
-/** The blueprint in the clean saved shape (PLAN.md §5.2). Also used by PUT /projects/:id/contents. */
+/** The blueprint in the clean saved shape (PLAN.md §5.2), made by the builder's own toDefinition(). */
 export function cleanBlueprint(blueprint: object): Blueprint {
     return toDefinition(toDraft(blueprint)) as Blueprint;
 }
 
-/**
- * Every blueprint in a project, sorted by name. Also used by PUT /projects/:id/contents to answer with what it saved.
- */
+/** Every blueprint in a project, in the clean shape, sorted by name. */
 export async function findBlueprints(projectId: string): Promise<Blueprint[]> {
     const selectQuery = `SELECT ${BLUEPRINT_COLUMNS} FROM blueprints WHERE project_id = ? ORDER BY name`;
     const [rows] = await db.query<RowDataPacket[]>(selectQuery, [projectId]);
@@ -253,9 +246,7 @@ export async function findBlueprints(projectId: string): Promise<Blueprint[]> {
     return blueprints;
 }
 
-/**
- * Returns a single blueprint by its snake_case ID within a project, or undefined when there is none.
- */
+/** One blueprint by its snake_case ID, or undefined when the project has none. */
 async function findBlueprint(projectId: string, id: string): Promise<Blueprint | undefined> {
     const selectQuery = `SELECT ${BLUEPRINT_COLUMNS} FROM blueprints WHERE project_id = ? AND schema_key = ?`;
     const [rows] = await db.query<RowDataPacket[]>(selectQuery, [projectId, id]);
@@ -265,10 +256,7 @@ async function findBlueprint(projectId: string, id: string): Promise<Blueprint |
     return cleanBlueprint(rows[0]);
 }
 
-/**
- * The snake_case IDs already used by blueprints in this project, so a new one can be checked before
- * the UNIQUE index has to refuse it. `exceptId` leaves out the blueprint being updated.
- */
+/** The snake_case IDs of the project's blueprints, leaving out `exceptId` (the one being updated). */
 async function findBlueprintIds(projectId: string, exceptId: string | null): Promise<string[]> {
     const selectQuery = `SELECT schema_key AS id FROM blueprints WHERE project_id = ?`;
     const [rows] = await db.query<RowDataPacket[]>(selectQuery, [projectId]);
@@ -290,9 +278,8 @@ async function findBlueprintRowId(projectId: string, id: string): Promise<string
 }
 
 /**
- * Points everything in the project that names blueprint `fromId` at `toId` instead: link properties in the other
- * blueprints, and the dialogues' speaker and item blueprints. Assets need nothing, because they're tied to the
- * blueprint's row UUID, which doesn't change. Runs in the caller's transaction, after the blueprint itself is renamed.
+ * Points every link to blueprint `fromId` at `toId`: link properties in the project's other blueprints, and the
+ * dialogues' speaker and item blueprints. Runs in the caller's transaction, after the rename itself.
  */
 async function renameLinksToBlueprint(
     connection: PoolConnection,
@@ -300,7 +287,6 @@ async function renameLinksToBlueprint(
     fromId: string,
     toId: string,
 ): Promise<void> {
-    // Link properties sit inside each blueprint's `fields` JSON, so every blueprint that uses one is rewritten
     const selectQuery = `SELECT id, fields FROM blueprints WHERE project_id = ? AND schema_key <> ?`;
     const [rows] = await connection.query<RowDataPacket[]>(selectQuery, [projectId, toId]);
     for (const row of rows) {
@@ -313,14 +299,13 @@ async function renameLinksToBlueprint(
         }
     }
 
-    // A dialogue names its blueprints in plain columns, so one UPDATE for each column is enough
     const speakerQuery = `UPDATE dialogues SET speaker_blueprint = ? WHERE project_id = ? AND speaker_blueprint = ?`;
     await connection.query(speakerQuery, [toId, projectId, fromId]);
     const itemQuery = `UPDATE dialogues SET item_blueprint = ? WHERE project_id = ? AND item_blueprint = ?`;
     await connection.query(itemQuery, [toId, projectId, fromId]);
 }
 
-/** The UUIDs of every asset made from a blueprint, so they can leave the project's asset list too. */
+/** The UUIDs of a blueprint's assets. */
 async function findAssetIdsOfBlueprint(connection: PoolConnection, blueprintRowId: string): Promise<string[]> {
     const selectQuery = `SELECT id FROM assets WHERE blueprint_id = ?`;
     const [rows] = await connection.query<RowDataPacket[]>(selectQuery, [blueprintRowId]);
@@ -364,7 +349,7 @@ function validateBlueprintBody(
         return problems;
     }
 
-    // A link property may point at any other blueprint in the project, or at this one (the builder offers the same)
+    // A link may point at any other blueprint in the project, or at this one
     const linkTargetIds = [...takenIds];
     if (body.id !== '') {
         linkTargetIds.push(body.id);
@@ -375,9 +360,8 @@ function validateBlueprintBody(
 }
 
 /**
- * Checks every property, and the properties inside any group, adding what's wrong to `problems`.
- * A path says where the problem is, e.g. "fields.2.key" or "fields.2.fields.0.label".
- * `blueprintIds` are the blueprints a link property may point at; any other target is refused.
+ * Adds what's wrong with each property, including those inside groups, to `problems`, with paths like
+ * "fields.2.key". `blueprintIds` are the blueprints a link may point at.
  */
 function collectFieldProblems(
     problems: { path: string; message: string }[],
@@ -385,8 +369,8 @@ function collectFieldProblems(
     pathPrefix: string,
     blueprintIds: string[],
 ): void {
-    // validateFieldDefinition() can't spot a repeated property ID here: it tells properties apart by the
-    // builder's `uid`s, which saved blueprints don't have. So this level's repeats are found up front.
+    // validateFieldDefinition() tells properties apart by the builder's `uid`s, which saved blueprints don't have,
+    // so it can't spot a repeated ID here
     const repeatedKeys = findRepeatedKeys(fields);
 
     for (let index = 0; index < fields.length; index++) {
@@ -402,7 +386,7 @@ function collectFieldProblems(
             problems.push({ path: `${fieldPath}.${settingName}`, message: fieldErrors[settingName] });
         }
 
-        // Every property sharing the ID gets the message, like in the builder. Skipped when the ID already has an error.
+        // Every property sharing the ID gets the error, unless its ID already has one
         const key = (field as { key?: unknown }).key;
         if (!fieldErrors.key && typeof key === 'string' && repeatedKeys.includes(key)) {
             problems.push({ path: `${fieldPath}.key`, message: 'Another property at this level already uses this ID' });
@@ -415,7 +399,7 @@ function collectFieldProblems(
     }
 }
 
-/** The property IDs used more than once among `fields`. Only this level: a group's own properties are checked separately. */
+/** The property IDs used more than once at this level of `fields` (not inside groups). */
 function findRepeatedKeys(fields: unknown[]): string[] {
     const seen: string[] = [];
     const repeated: string[] = [];

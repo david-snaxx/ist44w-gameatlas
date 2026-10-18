@@ -2,13 +2,9 @@ import { useEffect, useRef } from 'react'
 import { useBlocker } from 'react-router'
 
 /**
- * Stops the user leaving an editor with unsaved changes, in two ways: react-router's
- * `useBlocker` catches navigation inside the app, and `beforeunload` catches closing or
- * reloading the tab (the browser shows its own warning there).
- *
- * Returns the blocker (pass it to <UnsavedChangesDialog />) and `allowLeaving()`, which
- * the page calls just before navigating on purpose — after saving under a new ID, or
- * after deleting — so the guard doesn't ask about changes that no longer matter.
+ * Stops the user leaving an editor with unsaved changes: `useBlocker` catches navigation inside the app, and
+ * `beforeunload` catches closing or reloading the tab. Returns the blocker (for <UnsavedChangesDialog />) and
+ * `allowLeaving()`, to call just before navigating on purpose (after a save under a new ID, or a delete).
  */
 export function useUnsavedChanges(isDirty) {
   // A ref is a value that survives re-renders without causing one when it changes

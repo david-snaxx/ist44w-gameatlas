@@ -32,6 +32,8 @@ function SettingsPage() {
   const [pendingBackup, setPendingBackup] = useState(null)
   // The confirmation dialog currently open: { title, message, confirmLabel, run }, where run() does the work
   const [confirmation, setConfirmation] = useState(null)
+  // True while a restore, reset or delete waits for the server, so the buttons can't send it twice
+  const [sending, setSending] = useState(false)
 
   const current = { blueprints: blueprints, assets: assets, dialogues: dialogues }
   const storedSize = new Blob([JSON.stringify(current)]).size
@@ -61,8 +63,12 @@ function SettingsPage() {
   }
 
   function askToRestore() {
-    function restore() {
-      restoreData(pendingBackup.backup)
+    async function restore() {
+      const result = await restoreData(pendingBackup.backup)
+      if (result.error) {
+        toast.show({ status: 'error', message: result.error })
+        return
+      }
       setPendingBackup(null)
       toast.show({ status: 'success', message: 'Backup restored' })
     }
@@ -76,8 +82,12 @@ function SettingsPage() {
   }
 
   function askToReset() {
-    function reset() {
-      resetToExampleData()
+    async function reset() {
+      const result = await resetToExampleData()
+      if (result.error) {
+        toast.show({ status: 'error', message: result.error })
+        return
+      }
       toast.show({ status: 'success', message: 'Example data restored' })
     }
 
@@ -90,8 +100,12 @@ function SettingsPage() {
   }
 
   function askToDeleteAll() {
-    function deleteEverything() {
-      deleteAllData()
+    async function deleteEverything() {
+      const result = await deleteAllData()
+      if (result.error) {
+        toast.show({ status: 'error', message: result.error })
+        return
+      }
       toast.show({ status: 'success', message: 'All data deleted' })
     }
 
@@ -103,13 +117,17 @@ function SettingsPage() {
     })
   }
 
-  function handleConfirm() {
-    confirmation.run()
+  // Closes the dialog, then waits for the server while the work runs
+  async function handleConfirm() {
+    const run = confirmation.run
     setConfirmation(null)
+    setSending(true)
+    await run()
+    setSending(false)
   }
 
   return (
-    <AppShell crumbs={[{ label: 'Settings' }]} status={`${formatSize(storedSize)} saved in this browser`}>
+    <AppShell crumbs={[{ label: 'Settings' }]} status={`${formatSize(storedSize)} of data`}>
       <div className={styles.page}>
         <header>
           <h1>Settings</h1>
@@ -123,8 +141,8 @@ function SettingsPage() {
             <CountTile count={dialogues.length} noun="dialogue" to="/dialogues" />
           </div>
           <p className="small muted">
-            Everything is saved in this browser only ({formatSize(storedSize)}). Clearing your browser data or switching
-            computers loses it, so download a backup regularly.
+            Everything is saved on the server, in your project. Download a backup now and then to keep a copy of your
+            own.
           </p>
         </Section>
 
@@ -138,10 +156,10 @@ function SettingsPage() {
             </Button>
           </SettingRow>
 
-          <SettingRow title="Restore from a backup" text="Replaces everything in GameAtlas with the contents of a backup file.">
+          <SettingRow title="Restore from a backup" text="Replaces everything in your project with the contents of a backup file.">
             {/* The real file picker is hidden; the button below opens it */}
             <input ref={fileInputRef} type="file" accept=".json,application/json" hidden onChange={chooseBackupFile} />
-            <Button icon={Upload} onClick={() => fileInputRef.current.click()}>
+            <Button icon={Upload} disabled={sending} onClick={() => fileInputRef.current.click()}>
               Choose backup file
             </Button>
           </SettingRow>
@@ -149,6 +167,7 @@ function SettingsPage() {
           {pendingBackup && (
             <BackupPreview
               pendingBackup={pendingBackup}
+              sending={sending}
               onCancel={() => setPendingBackup(null)}
               onRestore={askToRestore}
             />
@@ -160,7 +179,7 @@ function SettingsPage() {
             title="Reset to example data"
             text="Replaces everything with the example Item and Entity blueprints, their assets and the Merchant greeting dialogue. Handy for demos."
           >
-            <Button icon={RotateCcw} onClick={askToReset}>
+            <Button icon={RotateCcw} disabled={sending} onClick={askToReset}>
               Reset to examples
             </Button>
           </SettingRow>
@@ -168,7 +187,7 @@ function SettingsPage() {
             title="Delete all data"
             text="Removes every blueprint, asset and dialogue so you can start from nothing."
           >
-            <Button variant="danger" icon={Trash2} onClick={askToDeleteAll}>
+            <Button variant="danger" icon={Trash2} disabled={sending} onClick={askToDeleteAll}>
               Delete everything
             </Button>
           </SettingRow>
@@ -217,7 +236,7 @@ function CountTile({ count, noun, to }) {
 }
 
 /** The backup file the user picked, with what's in it, waiting for them to restore it or cancel. */
-function BackupPreview({ pendingBackup, onCancel, onRestore }) {
+function BackupPreview({ pendingBackup, sending, onCancel, onRestore }) {
   const backup = pendingBackup.backup
   let made = 'Date unknown'
   if (backup.createdAt) {
@@ -233,8 +252,10 @@ function BackupPreview({ pendingBackup, onCancel, onRestore }) {
         </p>
       </div>
       <div className="row">
-        <Button onClick={onCancel}>Cancel</Button>
-        <Button variant="danger" icon={RotateCcw} onClick={onRestore}>
+        <Button disabled={sending} onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button variant="danger" icon={RotateCcw} disabled={sending} onClick={onRestore}>
           Restore this backup
         </Button>
       </div>

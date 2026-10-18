@@ -11,6 +11,7 @@ import TextArea from '../../components/form/TextArea.jsx'
 import TextInput from '../../components/form/TextInput.jsx'
 import ValidationSummary from '../../components/form/ValidationSummary.jsx'
 import JsonPreview from '../../components/JsonPreview/JsonPreview.jsx'
+import LoadingRecord from '../../components/LoadingRecord/LoadingRecord.jsx'
 import MissingRecord from '../../components/MissingRecord/MissingRecord.jsx'
 import { ImportNotice } from '../../components/Notice/Notice.jsx'
 import Section from '../../components/Section/Section.jsx'
@@ -30,11 +31,11 @@ import {
   validateDialogueGraph,
   parseDialogueFile,
 } from '../../data/dialogueGraph.js'
-import { deleteDialogue, saveDialogues } from '../../data/dialogueStore.js'
+import { deleteDialogue, saveDialogue } from '../../data/dialogueStore.js'
 import { useAssets } from '../../data/useAssets.js'
-import { useDialogues } from '../../data/useDialogues.js'
+import { useDialogue, useDialogues } from '../../data/useDialogues.js'
 import { toSnakeCase } from '../../schema/blueprintDraft.js'
-import { useBlueprints } from '../../schema/useBlueprints.js'
+import { useBlueprints, useBlueprintsStatus } from '../../schema/useBlueprints.js'
 import { downloadJson } from '../../utils/downloadJson.js'
 import { formatDateTime } from '../../utils/formatDate.js'
 import { plural } from '../../utils/plural.js'
@@ -50,6 +51,17 @@ import { DialogueEditorContext } from './DialogueEditorContext.js'
 function DialogueEditorPage() {
   const { dialogueKey } = useParams()
   const location = useLocation()
+  const blueprintsStatus = useBlueprintsStatus()
+  const saved = useDialogue(dialogueKey)
+
+  // The editor's state starts from the saved dialogue and the blueprints (a new one picks its speaker and item
+  // blueprints from them), so wait for both lists
+  if (saved.status === 'loading' || saved.status === 'failed') {
+    return <LoadingRecord error={saved.error} />
+  }
+  if (blueprintsStatus.status === 'loading' || blueprintsStatus.status === 'failed') {
+    return <LoadingRecord error={blueprintsStatus.error} />
+  }
 
   // location.state is what the page that sent us here passed along (an import or a duplicate), if anything
   const state = location.state ?? {}
@@ -63,6 +75,7 @@ function DialogueEditorPage() {
     <ReactFlowProvider key={editorKey}>
       <DialogueEditor
         dialogueKey={dialogueKey}
+        savedDialogue={saved.dialogue}
         imported={state.imported}
         origin={state.origin}
         originName={state.originName}
@@ -72,13 +85,12 @@ function DialogueEditorPage() {
 }
 
 /**
+ * The editor, kept in three pieces of state: `details` (name, ID, description, the two blueprints), `nodes` and `edges`.
+ * savedDialogue: the dialogue as the server last saved it, or null (a new one, or the URL's doesn't exist)
  * imported: { details, nodes, edges } to start a new dialogue from (an imported file or a duplicate)
  * origin: 'file' | 'duplicate'; originName: the name of the dialogue that was duplicated
- *
- * The dialogue is kept in three pieces of state: `details` (name, ID, description and the two
- * blueprints), and the canvas's `nodes` and `edges`.
  */
-function DialogueEditor({ dialogueKey, imported, origin, originName }) {
+function DialogueEditor({ dialogueKey, savedDialogue, imported, origin, originName }) {
   const isDuplicate = origin === 'duplicate'
   const isFromFile = Boolean(imported) && !isDuplicate
   // An imported file's ID is kept as-is; a duplicate's ID keeps following its name
@@ -90,8 +102,8 @@ function DialogueEditor({ dialogueKey, imported, origin, originName }) {
   const toast = useToast()
   const { setCenter } = useReactFlow()
 
-  // The starting point, worked out once when the editor opens. `useState(() => …)` only runs the function the first time.
-  const [initial] = useState(() => startingState(dialogueKey, dialogues, blueprints, imported))
+  // Worked out once: `useState(() => …)` only runs the function the first time
+  const [initial] = useState(() => startingState(savedDialogue, blueprints, imported))
 
   const [baseline, setBaseline] = useState(initial.saved)
   const [details, setDetails] = useState(initial.details)
@@ -102,6 +114,8 @@ function DialogueEditor({ dialogueKey, imported, origin, originName }) {
   const [detailsTouched, setDetailsTouched] = useState({})
   const [submitted, setSubmitted] = useState(isFromFile)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  // True while a save or delete waits for the server, so the buttons can't send it twice
+  const [sending, setSending] = useState(false)
 
   // ---------- Derived data ----------
 
@@ -226,17 +240,23 @@ function DialogueEditor({ dialogueKey, imported, origin, originName }) {
 
   // ---------- Saving, discarding, deleting, downloading ----------
 
-  function handleSave() {
+  async function handleSave() {
     setSubmitted(true)
     if (detailProblemCount > 0) {
       toast.show({ status: 'error', message: `Fix ${plural(detailProblemCount, 'problem')} before saving` })
       return
     }
 
-    const cleanDetails = { ...details, description: details.description.trim() }
-    const now = new Date().toISOString()
-    const saved = {
-      id: baseline?.id ?? crypto.randomUUID(),
+    // Trimmed as the server does
+    const cleanDetails = { ...details, name: details.name.trim(), description: details.description.trim() }
+    // A new dialogue has no id until the server gives it one
+    let id = null
+    if (baseline) {
+      id = baseline.id
+    }
+    setSending(true)
+    const result = await saveDialogue({
+      id: id,
       name: cleanDetails.name,
       key: cleanDetails.key,
       description: cleanDetails.description,
@@ -244,12 +264,18 @@ function DialogueEditor({ dialogueKey, imported, origin, originName }) {
       itemBlueprint: cleanDetails.itemBlueprint,
       nodes: stored.nodes,
       edges: stored.edges,
-      createdAt: baseline?.createdAt ?? now,
-      updatedAt: now,
+    })
+    setSending(false)
+
+    if (result.error) {
+      toast.show({ status: 'error', message: result.error })
+      return
     }
-    saveDialogues([saved])
+
+    const saved = result.data
     setBaseline(saved)
     setDetails(cleanDetails)
+    // What was sent counts as "no changes", so canvas moves made while waiting still show as unsaved
     setSavedJson(snapshot(cleanDetails, nodes, edges))
     setSubmitted(false)
     setDetailsTouched({})
@@ -271,9 +297,13 @@ function DialogueEditor({ dialogueKey, imported, origin, originName }) {
 
   function handleDiscard() {
     if (baseline) {
-      setDetails(pickDetails(baseline))
-      setNodes(toCanvasNodes(baseline.nodes))
+      const savedDetails = pickDetails(baseline)
+      const savedNodes = toCanvasNodes(baseline.nodes)
+      setDetails(savedDetails)
+      setNodes(savedNodes)
       setEdges(baseline.edges)
+      // A fresh snapshot: the server's copy has the keys inside each node in a different order
+      setSavedJson(snapshot(savedDetails, savedNodes, baseline.edges))
     } else {
       setDetails(initial.details)
       setNodes(initial.nodes)
@@ -284,10 +314,18 @@ function DialogueEditor({ dialogueKey, imported, origin, originName }) {
     setSubmitted(!baseline && isFromFile)
   }
 
-  function handleDelete() {
+  async function handleDelete() {
     setConfirmDelete(false)
+    setSending(true)
+    const result = await deleteDialogue(baseline.id)
+    setSending(false)
+
+    if (result.error) {
+      toast.show({ status: 'error', message: result.error })
+      return
+    }
+
     allowLeaving()
-    deleteDialogue(baseline.id)
     toast.show({ status: 'success', message: `Dialogue "${baseline.name}" deleted` })
     navigate('/dialogues', { replace: true })
   }
@@ -364,10 +402,10 @@ function DialogueEditor({ dialogueKey, imported, origin, originName }) {
             }
             footer={
               <>
-                <Button variant="primary" icon={Save} onClick={handleSave}>
+                <Button variant="primary" icon={Save} disabled={sending} onClick={handleSave}>
                   Save
                 </Button>
-                <Button icon={RotateCcw} disabled={!isDirty} onClick={handleDiscard}>
+                <Button icon={RotateCcw} disabled={!isDirty || sending} onClick={handleDiscard}>
                   Discard
                 </Button>
                 {baseline && (
@@ -376,6 +414,7 @@ function DialogueEditor({ dialogueKey, imported, origin, originName }) {
                     icon={Trash2}
                     className="push-right"
                     title="Delete dialogue"
+                    disabled={sending}
                     onClick={() => setConfirmDelete(true)}
                   />
                 )}
@@ -494,15 +533,10 @@ function preferredBlueprint(blueprints, preferredId) {
 }
 
 /**
- * What the editor starts with: a saved dialogue, an imported one, or a blank one.
+ * What the editor starts with: the saved dialogue (`saved`, or null), an imported one, or a blank one.
  * Returns { saved, details, nodes, edges, json }, where json is the snapshot that counts as "no changes".
  */
-function startingState(dialogueKey, dialogues, blueprints, imported) {
-  let saved = null
-  if (dialogueKey) {
-    saved = dialogues.find((dialogue) => dialogue.key === dialogueKey) ?? null
-  }
-
+function startingState(saved, blueprints, imported) {
   const blankDetails = {
     name: '',
     key: '',

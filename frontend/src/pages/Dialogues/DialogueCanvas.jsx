@@ -47,9 +47,8 @@ function DialogueCanvas({ nodes, edges, setNodes, setEdges }) {
     fitView({ padding: 0.15, maxZoom: 1 })
   }, [nodesInitialized, fitView])
 
-  // React Flow reports changes (moving, selecting, deleting, measuring…) and we apply them to our state.
-  // The "current =>" form of setNodes gets the newest list, which matters because React Flow can
-  // report several changes before the page has re-rendered.
+  // Applies React Flow's changes (moving, selecting, deleting, measuring…) to the page's state. The "current =>"
+  // form gets the newest list, since React Flow can report several changes before the page re-renders.
   function handleNodesChange(changes) {
     setNodes((current) => applyNodeChanges(changes, current))
   }

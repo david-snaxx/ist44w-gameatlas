@@ -1,7 +1,4 @@
-/*
- * The two signed-out pages (log in and sign up). They sit outside AppShell, so there's no sidebar,
- * top bar or status bar here: just one centred column on an otherwise empty screen.
- */
+/* The signed-out pages (log in, sign up): one centred column, outside AppShell. */
 
 .screen {
     display: flex;
@@ -11,10 +8,7 @@
     padding: var(--space-5);
 }
 
-/*
- * A size container, which is how PropertyRow decides to put its labels above the inputs instead of
- * beside them: the column is far narrower than the 520px it looks for.
- */
+/* A size container, so PropertyRow puts its labels above the inputs (the column is under 520px). */
 .column {
     container-type: inline-size;
     display: flex;
