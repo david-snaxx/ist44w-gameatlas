@@ -97,7 +97,7 @@ async function askServer(user) {
     const answer = await fetchProjects(user)
 
     // Someone else logged in, or nobody, while this was on its way
-    if (askingFor !== user.iLd) {
+    if (askingFor !== user.id) {
         return
     }
     askingFor = null

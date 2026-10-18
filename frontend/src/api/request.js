@@ -2,6 +2,9 @@
  * Interface to send requests directly to the backend REST api.
  */
 
+/** The error shown when the backend can't be reached, e.g. because it's down or restarting. */
+const SERVER_UNREACHABLE = "Couldn't reach the server. It may be down or restarting, so try again in a moment."
+
 /**
  * Sends a request to the backend and reads its answer.
  * Answers { data } when it worked (null for a 204), or { error } with the server's message.
@@ -25,7 +28,7 @@ export async function sendRequest(method, path, body) {
         response = await fetch(path, options)
     } catch {
         return {
-            error: "Couldn't reach the server."
+            error: SERVER_UNREACHABLE
         }
     }
 
@@ -39,6 +42,13 @@ export async function sendRequest(method, path, body) {
 
     if (response.ok) {
         return {data: data}
+    }
+    // the backend always answers in JSON, so a failure without any came from something in between,
+    // e.g. Vite's proxy answering 502 because the backend is down
+    if (data === null) {
+        return {
+            error: SERVER_UNREACHABLE
+        }
     }
     return failureFrom(data)
 }
