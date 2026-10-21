@@ -13,6 +13,8 @@ export interface Project {
     name: string;
     /** ISO 8601 creation time. */
     createdAt: Date;
+    /** The {@link User} whose personal project this is, or null for a shared one. A personal one can't be joined, left or deleted. */
+    personalUserId: string | null;
     /** {@link User} UUIDs for users that may work on this project. */
     memberUserIds: string[];
     /** {@link Asset} UUIDs for assets that are part of this project. */
@@ -21,6 +23,13 @@ export interface Project {
     blueprintIds: string[];
     /** {@link Dialogue} UUIDs for dialogues that are part of this project. */
     dialogueIds: string[];
+}
+
+/** One member of a {@link Project}, as the members routes answer: a {@link User}'s public details. */
+export interface ProjectMember {
+    id: string;
+    email: string;
+    displayName: string;
 }
 
 /** Everything in one {@link Project}, as a backup holds it. What `PUT /api/projects/:id/contents` takes and answers. */

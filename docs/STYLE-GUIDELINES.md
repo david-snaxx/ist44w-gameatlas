@@ -204,7 +204,7 @@ Every page renders inside **`AppShell`**.
 
 - **Frame:** the top bar, sidebar and status bar are one continuous translucent surface with no borders between them. It has 8px of padding at the top and 12px on the right. The frame never scrolls; only the content zone and the sidebar (if its list is long) do.
 - **Top bar:** the wordmark sits above the sidebar. Global actions are right-aligned with the content zone's edge. The top bar holds no page-specific controls.
-- **Sidebar:** `AppSidebar`: groups of links with 16px icons, each group under a small uppercase title. A **Home** link (the dashboard) comes first, without a title. Then one **foldable section per project** the logged-in user belongs to (oldest first, from `useCurrentProject()`): a native `<details>` whose `<summary>` is the project's name (`.nav-project-name`, 14px semibold `--color-text`, with the browser's own disclosure triangle), and under it the project's **Assets** (All assets and one link per blueprint in that project, to its asset browser; a saved, renamed or deleted blueprint shows at once, in every project's section), **Dialogues** (All dialogues) and **Blueprints** (All blueprints) groups, set in by `--space-3` (`.nav-project-groups`). Sections start open, and a folded one stays folded while the person moves between pages (remembered in the module, not in `localStorage`). With nobody logged in there are no project sections. If the projects can't be loaded, the server's message shows in their place as a muted 12px note (`.nav-note`). Every link in a project's section goes to that project's pages (`/projects/:projectId/…`), so the same blueprint name in two projects leads to two different pages. **General** has Settings. Hover uses `--color-hover-overlay`. The link whose route best matches the URL is active (`--color-accent-soft` background, `--color-accent-text` text), so an asset editor highlights its blueprint under Assets.
+- **Sidebar:** `AppSidebar`: groups of links with 16px icons, each group under a small uppercase title. A **Home** link (the dashboard) comes first, without a title. Then one **foldable section per project** the logged-in user belongs to (oldest first, from `useCurrentProject()`): a native `<details>` whose `<summary>` is the project's name (`.nav-project-name`, 14px semibold `--color-text`, with the browser's own disclosure triangle) with a 14px cog floated to its right (`.nav-project-settings`, a 20px muted link with the usual hover, and the active colors on that project's settings page) that opens the project's settings without folding the section, and under it the project's **Assets** (All assets and one link per blueprint in that project, to its asset browser; a saved, renamed or deleted blueprint shows at once, in every project's section), **Dialogues** (All dialogues) and **Blueprints** (All blueprints) groups, set in by `--space-3` (`.nav-project-groups`). Sections start open, and a folded one stays folded while the person moves between pages (remembered in the module, not in `localStorage`). With nobody logged in there are no project sections. If the projects can't be loaded, the server's message shows in their place as a muted 12px note (`.nav-note`). Every link in a project's section goes to that project's pages (`/projects/:projectId/…`), so the same blueprint name in two projects leads to two different pages. **General** has Settings. Hover uses `--color-hover-overlay`. The link whose route best matches the URL is active (`--color-accent-soft` background, `--color-accent-text` text), so an asset editor highlights its blueprint under Assets.
 - **Content zone:** one large rounded glass area between the top bar and status bar. It scrolls on its own. Pages sit inside it with `--space-5` padding, divided into flat sections (§6.1).
 - **Status bar:** breadcrumbs on the left in 12px muted text, aligned with the wordmark (separator `›`). Optional short status text on the right, such as "Saved" or "3 problems". Breadcrumbs appear on every page deeper than the home page.
 - **Asset editor = three panes:** asset list | form | preview (built, §7.12). Resizable and collapsible panes with sizes remembered in `localStorage` are **(planned)**.
@@ -326,6 +326,8 @@ Styled text "GameAtlas" in the Silkscreen font, `--color-text`, in the top-left 
 | `Badge` | `tone` (neutral / success / warning / error) |
 | `LinkList` | Links with an icon, a label and an optional hint under it: `items: [{ icon, label, hint?, to }]`, `emptyMessage` |
 | `EmptyState` | A centered muted `message` and one button as `children` (§7.7) |
+| `SettingRow` | One setting: a bold 14px `title` (text, or text plus a `Badge`) and a muted 13px `text` on the left, its buttons as `children` on the right. Every row but a section's first has a 1px rule above it. Used by both settings pages, including for project members |
+| `BackupPreview` | A picked backup file waiting to be restored: `pendingBackup: { backup, fileName }`, `sending`, `onCancel`, `onRestore`. A raised box with the file name, its date and contents, Cancel and a danger "Restore this backup" |
 | `Notice` + `ImportNotice` | A short explanation above a form: `tone` (info / warning) and children. `ImportNotice` is the "opened pre-filled" wording every editor shows (§7.15) |
 
 **Whole-page components.** These own the `AppShell` themselves, so a page that uses one returns it directly:
@@ -389,7 +391,7 @@ The first real page (`pages/Blueprints/`) sets the pattern for editor pages:
 `pages/Settings/`, at `/settings` (sidebar → General).
 - A single column (max 880px): H1 "Settings" with a muted intro, then stacked sections.
 - **Which project:** like the dashboard, the last project opened, else the oldest. The intro names it ("Back up, restore or reset {project}. Everything here acts on the project you opened last."), and so does every confirmation and success toast: "Replace everything in "{project}" with this backup?", "Reset "{project}" to example data?", "Delete everything in "{project}"?", "Backup of "{project}" downloaded".
-- **Setting rows:** a bold 14px title and a muted 13px explanation on the left, one button on the right, separated by 1px dividers.
+- **Setting rows** (`SettingRow`): a bold 14px title and a muted 13px explanation on the left, one button on the right, separated by 1px dividers.
 - **Your data:** three count tiles (`--color-bg-raised`, 20px numbers, linking to each section) and a short note that everything is saved on the server, in the project, and that a backup keeps a copy of your own, with the total size. The status bar repeats the size.
 - **Back up and restore:** Download backup (primary). "Choose backup file" (secondary) reads the file and shows a preview box (file name, date and contents) with Cancel and a danger "Restore this backup". Nothing changes until the confirmation dialog.
 - **Start over:** Reset to examples (secondary) and Delete everything (danger), each behind a confirmation that says exactly what will be replaced or deleted. Restore, reset and delete replace the whole project on the server and wait for it: the buttons are disabled meanwhile, and a refusal is an error toast with nothing changed.
@@ -458,6 +460,31 @@ It calls `POST /api/users/logout`, then `clearCurrentUser()` so every open page 
 `GET /api/users/me` **once per page load**. The sidebar is rebuilt on every page, so asking each time would be
 a round trip per click for an answer that hasn't changed. The login page calls `setCurrentUser()` with the
 user it already has, so the name appears without a second request.
+
+### 7.18 Page pattern: project settings
+
+`pages/Projects/`, at `/projects/:projectId/settings`, opened from the cog beside a project's name in the sidebar.
+Every member sees and can use all of it (there are no permissions yet).
+
+- Inside `AppShell` on the plain `.page` layout: H1 "Project settings" with a muted intro naming the project, then
+  four stacked sections. The breadcrumb is "{project} › Settings"; the status bar says "Personal project" or
+  "Shared project · N members".
+- **Details:** the name in a `PropertyRow` with a **Rename** button beside it (disabled while the name is
+  unchanged; an empty name gets "Enter a name"), then label-and-value rows like the account page's: Created,
+  Kind ("Personal: only you can open it…" or "Shared: every member can…") and Members (their names in one line).
+- **Back up and restore:** `SettingRow`s for Download backup (primary), Choose backup file (with `BackupPreview`
+  under it once a file is picked) and Delete everything (danger), which empties the project but keeps it and its
+  members. Restore and delete go through a `ConfirmDialog` that names the project and say what will change.
+- **Members:** a muted line saying every member can change everything, then one `SettingRow` per member in the
+  order they joined: their display name (with a neutral **You** badge on the logged-in user) above their email,
+  and **Remove** on the others or **Leave project** on yours, each behind a confirmation. Below them an "Add a
+  member" email box with **Add member**: an empty box gets "Enter their email", and the server's refusals
+  ("No account uses that email", "… is already a member") are error toasts.
+- **Delete project:** one `SettingRow` with a danger **Delete project** button behind a confirmation. Deleting or
+  leaving goes home, and the project leaves the sidebar.
+- **Personal projects** can't be shared, left or deleted, so the add-member box is gone, Leave and Delete project
+  are disabled, and a muted line says why. They can still be renamed, restored and emptied. The last member of a
+  shared project can't leave either: Leave is disabled and a line points them to Delete project.
 
 ---
 

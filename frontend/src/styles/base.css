@@ -272,6 +272,28 @@ body::before {
   background: var(--color-hover-overlay);
 }
 
+/* The cog at the end of a project's name, leading to its settings. Floated, so the name keeps its triangle. */
+.nav-project-settings {
+  float: right;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+}
+
+.nav-project-settings:hover {
+  background: var(--color-hover-overlay);
+  color: var(--color-text);
+}
+
+.nav-project-settings.is-active {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-text);
+}
+
 /* The project's groups, spaced like the sidebar's own and set in a little under its name */
 .nav-project-groups {
   display: flex;
@@ -630,6 +652,53 @@ body::before {
   display: block;
   font-size: var(--text-xs);
   color: var(--color-text-subtle);
+}
+
+/* ============================================================ SettingRow */
+
+/* Text on the left, its buttons on the right */
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+/* A rule above every row but a section's first */
+.setting-row:not(:first-child) {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.setting-row-title {
+  font-size: var(--text-base);
+}
+
+.setting-row-text {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+/* ============================================================ BackupPreview */
+
+.backup-preview {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-bg-raised);
+  border-radius: var(--radius-sm);
+}
+
+.backup-preview-text {
+  flex: 1;
+}
+
+.backup-preview-detail {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
 }
 
 /* ============================================================ JsonPreview */

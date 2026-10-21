@@ -138,12 +138,12 @@ gameatlas/
 │       │   └── form/      # ✔ Input components, PropertyRow, FieldInput, ListInput, FormRenderer, ValidationSummary
 │       ├── schema/        # ✔ Field-type registry, validation, blueprint drafts, blueprintStore (on the server since 2026-10-16)
 │       ├── data/          # ✔ Assets and dialogues: stores (on the server since 2026-10-16), data ↔ form values, dialogue graph model, export/import
-│       ├── pages/         # ✔ Route-level screens: Blueprints (list + builder), Dashboard (home), Settings, Assets (browser + view + editor), Dialogues (list + tree editor), NotFound
+│       ├── pages/         # ✔ Route-level screens: Blueprints (list + builder), Dashboard (home), Settings, Projects (a project's settings), Assets (browser + view + editor), Dialogues (list + tree editor), NotFound
 │       ├── utils/         # ✔ Small helpers (downloads, dates, plurals, unsaved-changes guard)
 │       ├── unity/         # (future, §5.7) C# code generation: type mapping + templates (pure functions, no UI)
 │       └── api/           # ✔ fetch wrappers for the REST API (sendRequest + one file per resource), and the current user and project stores
 ├── backend/               # ✔ Express API in TypeScript (package.json, tsconfig.json, .env.example)
-│   ├── migrations/        # (Phase 2) Numbered .sql files: users, projects, schemas, documents, dialogues
+│   ├── sql/               # ✔ init.sql (database and user), tables.sql (every table), personal-projects.sql (one-off change of 2026-10-21); no migration tool
 │   └── src/
 │       ├── server.ts      # ✔ Starts the app on PORT
 │       ├── app.ts         # ✔ Express app: JSON bodies, /api routers, JSON 404 and 500
@@ -326,12 +326,17 @@ documents (id CHAR(36) PK, schema_id FK→schemas.id, doc_key VARCHAR,
 users     (id CHAR(36) PK, email UNIQUE, password_hash, display_name, created_at,
            project_ids JSON)
 
-projects  (id CHAR(36) PK, name, created_at, member_user_ids JSON,
-           blueprint_ids JSON, asset_ids JSON, dialogue_ids JSON)
+projects  (id CHAR(36) PK, name, created_at, personal_user_id CHAR(36) NULL UNIQUE,
+           member_user_ids JSON, blueprint_ids JSON, asset_ids JSON, dialogue_ids JSON)
 
 sessions  (session_id VARCHAR(128) PK, expires INT UNSIGNED, data MEDIUMTEXT)
            -- login sessions, in express-mysql-session's own layout
 ```
+
+**Personal projects (2026-10-21).** Every user has one personal project, made with the examples at their first
+login: `personal_user_id` holds their ID (NULL for a shared project), and its `UNIQUE` key stops a second one. Nobody
+can be added to it, leave it or delete it; it can be renamed and emptied. Databases made before this need
+`backend/sql/personal-projects.sql` once, which adds the column and marks each user's "<name> (personal)" project.
 
 **Users and projects (2026-10-10).** A project is one game's data, shared by its members. Who is in a project and
 what it contains are **ID arrays on the project** (and a user's projects are an array on the user), which is the
@@ -470,8 +475,11 @@ snake_case ID is only unique inside one (§5.6).
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/projects` | Every project the logged-in user is a member of, oldest first (the frontend's pages name theirs in the URL, `/projects/:projectId/…`) |
-| GET / PUT / DELETE | `/api/projects/{id}` | One project. PUT renames it; DELETE removes it and everything in it |
-| POST | `/api/projects` | Start an empty project (`{ name }`) with the caller as its first member |
+| GET / PUT / DELETE | `/api/projects/{id}` | One project (with `personalUserId`, null for a shared one). PUT renames it; DELETE removes it and everything in it for every member, 409 for a personal project |
+| POST | `/api/projects` | Start an empty project (`{ name, personal? }`) with the caller as its first member. `personal: true` makes it their personal project; 409 when they already have one |
+| GET | `/api/projects/{id}/members` | The members, in the order they joined: `[{ id, email, displayName }]` |
+| POST | `/api/projects/{id}/members` | Add the account with this email (`{ email }`, any case); answers it as a member (201). 404 `No account uses that email`; 409 when it's already a member or the project is personal |
+| DELETE | `/api/projects/{id}/members/{userId}` | Remove a member; members leave by removing themselves (204). Any member may remove any other. 404 when they aren't a member; 409 for a personal project and for the last member, who has to delete the project instead |
 | PUT | `/api/projects/{id}/contents` | Replace everything in the project at once (`{ blueprints, assets, dialogues }`, in their saved shapes, as a backup holds them): restore a backup, reset to the examples, delete all, fill a new project. Answers the new contents. Up to 20 MB, where every other route takes 100 KB |
 | GET | `/api/blueprints?projectId=…` | Every blueprint in the project |
 | GET / DELETE | `/api/blueprints/{id}?projectId=…` | One blueprint by its snake_case ID. DELETE takes its assets too |
@@ -613,7 +621,7 @@ Goal: documents are saved on a server and can be browsed and reopened.
 - [x] Frontend `api/` module (`sendRequest()`, users, projects, and the current user and project stores); loading and error states (`LoadingRecord`); save/delete that wait for the server and show its answer; the blueprint, asset and dialogue stores' localStorage calls swapped for API calls (all 2026-10-16)
 - [ ] `reference` field type (dropdown populated from `/api/documents?schemaId=…`). ✔ Already works against locally stored assets, including "That asset no longer exists" checks and link updates when an asset's ID changes; switch the source to the API
 - [ ] Write `docs/export-format.md`
-- [ ] Users and projects (§5.6): sign-up and login (`bcryptjs` + session cookie; backend routes done 2026-10-10, ✔ login and sign-up pages 2026-10-10), ✔ a personal project with the examples at first login and the sidebar grouped by project (2026-10-16), ✔ the project in every asset, blueprint and dialogue page's URL (2026-10-21), a project picker, creating projects, adding members
+- [ ] Users and projects (§5.6): sign-up and login (`bcryptjs` + session cookie; backend routes done 2026-10-10, ✔ login and sign-up pages 2026-10-10), ✔ a personal project with the examples at first login and the sidebar grouped by project (2026-10-16), ✔ the project in every asset, blueprint and dialogue page's URL (2026-10-21), ✔ a settings page per project with renaming, backups, members (add by email, remove, leave) and deleting it (2026-10-21), a project picker, creating projects
 - [ ] Backend tests: route tests with `node --test` (validation itself is tested once, in the frontend's Vitest suite)
 - **Done when:** a document created in the browser survives a page reload and server restart, can be browsed, edited, exported, and can reference another document.
 
@@ -818,6 +826,7 @@ Add new entries at the bottom. Format: `date · decision · why`.
 - 2026-10-21 · **`PUT /api/users/me` and `DELETE /api/users/me`** join `GET /me`: they act on the user in the session, never on an ID from the URL, so nobody can change or delete someone else's account. The `/{id}` routes stay for testing, but the frontend should use the `/me` versions. Deleting an account needs the password again (403 `Wrong password`), and one transaction takes the user out of each project in their `projectIds`, deletes a project once it has no members left (its contents go through the foreign keys), deletes the user and deletes every row in `sessions` whose `data` holds their `userId`. Only the browser that asked gets its cookie cleared; the others still hold a cookie, but it points to a session that no longer exists, so they're logged out on their next request. Both the user's row and each project's row are read `FOR UPDATE`, the first use of §5.6 rule 1, so two members of a project deleting their accounts at once can't each leave the other behind in the member list · User request: security for the users routes.
 - 2026-10-21 · **The account page can delete the account**, and `frontend/src/api/users.js` gains `updateMe()` and `deleteMe()` for the new `/me` routes (`updateMe()` has no page yet). A "Delete account" section asks for the password, then a `ConfirmDialog`, and waits for the server with the button disabled. "Wrong password" is an error toast; success clears the current user and goes to `/login` (STYLE-GUIDELINES §7.17) · User request.
 - 2026-10-21 · **The project is in the URL of every asset, blueprint and dialogue page** (`/projects/:projectId/assets`, `…/blueprints/…`, `…/dialogues/…`); `/`, `/settings`, `/account`, `/login` and `/signup` don't change, and `/projects` and `/projects/:projectId` have no page yet. `useCurrentProject()` reads the project from the URL, so the data hooks and the sidebar follow it without changes of their own; a project that isn't the user's shows "Project not found". Pages without a project in the URL (home, settings) use the last project visited, else the oldest, remembered in memory for the page load only. Settings names that project in its intro, confirmations and toasts, and `restoreData()`, `resetToExampleData()` and `deleteAllData()` take the project id instead of reading a "current" one. Switching projects remounts the page (`<Outlet key={projectId} />`), because React Router otherwise keeps a page's state, such as a filter or a half-edited form, when only the URL's ID changes. The blueprint store passes each list it loads or changes to the project store, so every project's sidebar section stays current after moving between projects · User request: until now every project's sidebar links went to the same pages.
+- 2026-10-21 · **Each project has a settings page** (`/projects/:projectId/settings`, opened from a cog beside the project's name in the sidebar): rename it, see when it was made and who is in it, back it up, restore it, empty it, add members by email, remove them or leave, and delete the whole project. There are no permissions yet: every member can do all of it. **Personal projects are marked in the database** by a new `projects.personal_user_id` column (§5.6), because the rules for them (nobody joins, leaves or deletes one; it can still be emptied and renamed) are the backend's to enforce, and until now only the frontend-made name said which project was personal. Its `UNIQUE` key also stops two tabs at a first login from making two personal projects. The frontend now makes the personal project when the user doesn't have one, rather than only when they have no projects at all, so someone added to another project before their first login still gets theirs. The last member of a shared project can't leave and has to delete it instead. Member changes lock the project's row (`FOR UPDATE`), so two at once can't overwrite each other's list. Refusals that depend on the project's state answer 409. The row and backup-preview markup the app-wide Settings page had became the shared `SettingRow` and `BackupPreview` components, which both settings pages use · User request.
 
 ---
 

@@ -25,11 +25,15 @@ CREATE TABLE IF NOT EXISTS projects (
     id CHAR(36) PRIMARY KEY,
     name VARCHAR(120) NOT NULL,
     created_at DATETIME NOT NULL,
+    -- The user whose personal project this is, or NULL for a shared one. Nobody joins, leaves or deletes a personal
+    -- project, and the UNIQUE key gives each user at most one.
+    personal_user_id CHAR(36) NULL,
     -- MySQL can't enforce anything inside a JSON array, so the routes keep these lists correct
     member_user_ids JSON NOT NULL,
     blueprint_ids JSON NOT NULL,
     asset_ids JSON NOT NULL,
-    dialogue_ids JSON NOT NULL
+    dialogue_ids JSON NOT NULL,
+    UNIQUE KEY one_personal_project_per_user (personal_user_id)
 );
 
 -- `id` is the internal UUID that projects.blueprint_ids holds; `schema_key` is the snake_case ID

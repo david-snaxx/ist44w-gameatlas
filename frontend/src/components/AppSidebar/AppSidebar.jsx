@@ -38,7 +38,7 @@ function AppSidebar() {
         <SidebarLink link={homeLink} activeTo={activeTo} />
       </nav>
       {sections.map((section) => (
-        <ProjectSection key={section.project.id} section={section} activeTo={activeTo} />
+        <ProjectSection key={section.project.id} section={section} activeTo={activeTo} pathname={pathname} />
       ))}
       {currentProject.error && <p className="nav-note">{currentProject.error}</p>}
       <SidebarGroup title="General" links={generalLinks} activeTo={activeTo} />
@@ -153,11 +153,17 @@ function LogOutButton() {
 }
 
 /**
- * One project: its name and its Assets, Dialogues and Blueprints groups. It's a native <details>, so the browser
- * does the folding; this only remembers which sections are folded.
+ * One project: its name with a cog leading to its settings, and its Assets, Dialogues and Blueprints groups. It's a
+ * native <details>, so the browser does the folding; this only remembers which sections are folded.
  */
-function ProjectSection({ section, activeTo }) {
+function ProjectSection({ section, activeTo, pathname }) {
   const projectId = section.project.id
+  const settingsTo = `/projects/${projectId}/settings`
+
+  let settingsClassName = 'nav-project-settings'
+  if (pathname === settingsTo) {
+    settingsClassName = 'nav-project-settings is-active'
+  }
 
   // The browser already opened or closed it; remember which for the next page
   function handleToggle(event) {
@@ -170,7 +176,13 @@ function ProjectSection({ section, activeTo }) {
 
   return (
     <details className="nav-project" open={!foldedProjectIds.has(projectId)} onToggle={handleToggle}>
-      <summary className="nav-project-name">{section.project.name}</summary>
+      <summary className="nav-project-name">
+        {/* A link inside the <summary> opens its page without folding the section */}
+        <Link to={settingsTo} className={settingsClassName} title="Project settings">
+          <Settings size={14} />
+        </Link>
+        {section.project.name}
+      </summary>
       <div className="nav-project-groups">
         <SidebarGroup title="Assets" links={section.assetLinks} activeTo={activeTo} />
         <SidebarGroup title="Dialogues" links={section.dialogueLinks} activeTo={activeTo} />

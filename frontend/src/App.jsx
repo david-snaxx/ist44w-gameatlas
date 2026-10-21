@@ -14,6 +14,7 @@ import DialogueListPage from './pages/Dialogues/DialogueListPage.jsx'
 import LoginPage from './pages/Login/LoginPage.jsx'
 import SignUpPage from './pages/Login/SignUpPage.jsx'
 import NotFoundPage from './pages/NotFound/NotFoundPage.jsx'
+import ProjectSettingsPage from './pages/Projects/ProjectSettingsPage.jsx'
 import SettingsPage from './pages/Settings/SettingsPage.jsx'
 import {rememberProject} from './api/currentProjectStore.js'
 import {useCurrentProject} from './api/useCurrentProject.js'
@@ -91,6 +92,7 @@ const router = createBrowserRouter([
           { path: '/projects/:projectId/dialogues', element: <DialogueListPage /> },
           { path: '/projects/:projectId/dialogues/new', element: lazyPage(<DialogueEditorPage />) },
           { path: '/projects/:projectId/dialogues/:dialogueKey', element: lazyPage(<DialogueEditorPage />) },
+          { path: '/projects/:projectId/settings', element: <ProjectSettingsPage /> },
         ],
       },
       { path: '/settings', element: <SettingsPage /> },

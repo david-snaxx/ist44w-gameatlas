@@ -3,11 +3,19 @@ import type { Request, Response } from 'express';
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { randomUUID } from 'node:crypto';
 import { db } from '../db.ts';
-import { findProject, openProject, withTransaction } from '../projectAccess.ts';
+import {
+    addToProjectList,
+    findProject,
+    isDuplicateKey,
+    openProject,
+    PROJECT_COLUMNS,
+    removeFromProjectList,
+    withTransaction,
+} from '../projectAccess.ts';
 import type { Asset } from '../types/asset.ts';
 import type { Blueprint } from '../types/blueprint.ts';
 import type { Dialogue } from '../types/dialogue.ts';
-import type { ProjectContents } from '../types/project.ts';
+import type { ProjectContents, ProjectMember } from '../types/project.ts';
 import { findAssets } from './assets.ts';
 import { cleanBlueprint, findBlueprints } from './blueprints.ts';
 import { asText, findDialogues } from './dialogues.ts';
@@ -17,10 +25,13 @@ import { checkContents } from '../../../frontend/src/data/backupFile.js';
 export const projectsRouter = express.Router();
 projectsRouter.get('/', getProjectRoot);
 projectsRouter.get('/:id', getProject);
+projectsRouter.get('/:id/members', getMembers);
 projectsRouter.post('/', postProject);
+projectsRouter.post('/:id/members', postMember);
 projectsRouter.put('/:id', putProject);
 projectsRouter.put('/:id/contents', putProjectContents);
 projectsRouter.delete('/:id', deleteProject);
+projectsRouter.delete('/:id/members/:userId', deleteMember);
 // endregion
 
 // region Endpoints
@@ -60,7 +71,8 @@ async function getProject(request: Request<{ id: string }>, response: Response) 
 
 /**
  * POST /projects
- * Starts an empty project with the logged-in user as its first member.
+ * Body: { name, personal? }. Starts an empty project with the logged-in user as its first member. `personal: true`
+ * makes it their personal project; 409 when they already have one.
  */
 async function postProject(request: Request, response: Response) {
     const userId = request.session.userId;
@@ -68,29 +80,46 @@ async function postProject(request: Request, response: Response) {
         return response.status(401).json({ message: 'Log in first' });
     }
 
-    const { name } = request.body ?? {};
+    const { name, personal } = request.body ?? {};
     const nameError = validateName(name);
     if (nameError) {
         return response.status(400).json({ message: nameError });
     }
+    if (personal !== undefined && typeof personal !== 'boolean') {
+        return response.status(400).json({ message: 'personal must be true or false' });
+    }
+    let personalUserId: string | null = null;
+    if (personal === true) {
+        personalUserId = userId;
+    }
 
     const id = randomUUID();
-    const insertQuery = `INSERT INTO projects (id, name, created_at, member_user_ids, blueprint_ids, asset_ids, dialogue_ids)
-                         VALUES (?, ?, ?, ?, ?, ?, ?)`;
+    const insertQuery = `INSERT INTO projects (id, name, created_at, personal_user_id, member_user_ids, blueprint_ids,
+                                               asset_ids, dialogue_ids)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
     const emptyList = JSON.stringify([]);
 
-    await withTransaction(async (connection) => {
-        await connection.query(insertQuery, [
-            id,
-            name.trim(),
-            new Date(),
-            JSON.stringify([userId]),
-            emptyList,
-            emptyList,
-            emptyList,
-        ]);
-        await addProjectToUser(connection, userId, id);
-    });
+    try {
+        await withTransaction(async (connection) => {
+            await connection.query(insertQuery, [
+                id,
+                name.trim(),
+                new Date(),
+                personalUserId,
+                JSON.stringify([userId]),
+                emptyList,
+                emptyList,
+                emptyList,
+            ]);
+            await addProjectToUser(connection, userId, id);
+        });
+    } catch (error) {
+        // The only UNIQUE key a new project can break is one_personal_project_per_user
+        if (isDuplicateKey(error)) {
+            return response.status(409).json({ message: 'You already have a personal project' });
+        }
+        throw error;
+    }
 
     response.status(201).json(await findProject(id));
 }
@@ -165,7 +194,8 @@ async function putProjectContents(request: Request<{ id: string }>, response: Re
 
 /**
  * DELETE /projects/:id
- * Deletes the project. Its blueprints, assets and dialogues go with it through their foreign keys.
+ * Deletes the project for every member. Its blueprints, assets and dialogues go with it through their foreign keys.
+ * 409 for a personal project, which can only be emptied.
  */
 async function deleteProject(request: Request<{ id: string }>, response: Response) {
     const userId = request.session.userId;
@@ -176,6 +206,9 @@ async function deleteProject(request: Request<{ id: string }>, response: Respons
     const project = await findProject(request.params.id);
     if (!project || !project.memberUserIds.includes(userId)) {
         return response.status(404).json({ message: 'Project not found' });
+    }
+    if (project.personalUserId !== null) {
+        return response.status(409).json({ message: "A personal project can't be deleted, only emptied" });
     }
 
     await withTransaction(async (connection) => {
@@ -188,12 +221,110 @@ async function deleteProject(request: Request<{ id: string }>, response: Respons
 
     response.status(204).end();
 }
+
+/**
+ * GET /projects/:id/members
+ * The project's members, in the order they joined: [{ id, email, displayName }].
+ */
+async function getMembers(request: Request<{ id: string }>, response: Response) {
+    const access = await openProject(request, request.params.id);
+    if (!access.project) {
+        return response.status(access.status).json({ message: access.message });
+    }
+
+    response.json(await findMembers(access.project.memberUserIds));
+}
+
+/**
+ * POST /projects/:id/members
+ * Body: { email }. Adds the account with that email to the project and answers it as a member (201). 404 when no
+ * account uses the email; 409 when it's already a member, or the project is someone's personal one.
+ */
+async function postMember(request: Request<{ id: string }>, response: Response) {
+    const access = await openProject(request, request.params.id);
+    if (!access.project) {
+        return response.status(access.status).json({ message: access.message });
+    }
+    const project = access.project;
+
+    const { email } = request.body ?? {};
+    if (typeof email !== 'string' || email.trim() === '') {
+        return response.status(400).json({ message: 'email is required' });
+    }
+    if (project.personalUserId !== null) {
+        return response.status(409).json({ message: "Members can't be added to a personal project" });
+    }
+
+    const member = await findMemberByEmail(email.trim());
+    if (!member) {
+        return response.status(404).json({ message: 'No account uses that email' });
+    }
+
+    const outcome = await withTransaction(async (connection) => {
+        const memberIds = await lockMemberIds(connection, project.id);
+        if (memberIds === null) {
+            return 'project gone';
+        }
+        if (memberIds.includes(member.id)) {
+            return 'already a member';
+        }
+        await addToProjectList(connection, project.id, 'member_user_ids', member.id);
+        await addProjectToUser(connection, member.id, project.id);
+        return 'added';
+    });
+
+    if (outcome === 'project gone') {
+        return response.status(404).json({ message: 'Project not found' });
+    }
+    if (outcome === 'already a member') {
+        return response.status(409).json({ message: `${member.displayName} is already a member` });
+    }
+    response.status(201).json(member);
+}
+
+/**
+ * DELETE /projects/:id/members/:userId
+ * Takes a member out of the project; members leave by removing themselves. 404 when they aren't a member; 409 for a
+ * personal project, and for the last member, who has to delete the project instead.
+ */
+async function deleteMember(request: Request<{ id: string; userId: string }>, response: Response) {
+    const access = await openProject(request, request.params.id);
+    if (!access.project) {
+        return response.status(access.status).json({ message: access.message });
+    }
+    const project = access.project;
+    const userId = request.params.userId;
+
+    if (project.personalUserId !== null) {
+        return response.status(409).json({ message: 'Nobody can leave a personal project' });
+    }
+
+    const outcome = await withTransaction(async (connection) => {
+        const memberIds = await lockMemberIds(connection, project.id);
+        if (memberIds === null || !memberIds.includes(userId)) {
+            return 'not a member';
+        }
+        if (memberIds.length === 1) {
+            return 'last member';
+        }
+        await removeFromProjectList(connection, project.id, 'member_user_ids', userId);
+        await removeProjectFromUser(connection, userId, project.id);
+        return 'removed';
+    });
+
+    if (outcome === 'not a member') {
+        return response.status(404).json({ message: "That account isn't a member of this project" });
+    }
+    if (outcome === 'last member') {
+        return response.status(409).json({ message: "The last member can't leave. Delete the project instead." });
+    }
+    response.status(204).end();
+}
 // endregion
 
 // region Helpers
-/** SQL columns that make up a project. */
-const PROJECT_COLUMNS = `id, name, created_at AS createdAt, member_user_ids AS memberUserIds,
-                         blueprint_ids AS blueprintIds, asset_ids AS assetIds, dialogue_ids AS dialogueIds`;
+/** The user columns a {@link ProjectMember} shows: never the password hash. */
+const MEMBER_COLUMNS = 'id, email, display_name AS displayName';
 
 const MAX_PROJECT_NAME_LENGTH = 120;
 
@@ -236,6 +367,46 @@ async function removeProjectFromUser(connection: PoolConnection, userId: string,
 
     const updateQuery = `UPDATE users SET project_ids = ? WHERE id = ?`;
     await connection.query(updateQuery, [JSON.stringify(kept), userId]);
+}
+
+/** These users as {@link ProjectMember}s, in the order of `userIds`. An ID with no user behind it is left out. */
+async function findMembers(userIds: string[]): Promise<ProjectMember[]> {
+    if (userIds.length === 0) {
+        return [];
+    }
+    // mysql2 turns the array into a comma-separated list for IN (?)
+    const selectQuery = `SELECT ${MEMBER_COLUMNS} FROM users WHERE id IN (?)`;
+    const [rows] = await db.query<RowDataPacket[]>(selectQuery, [userIds]);
+
+    const members: ProjectMember[] = [];
+    for (const userId of userIds) {
+        const row = rows.find((candidate) => candidate.id === userId);
+        if (row) {
+            members.push(row as ProjectMember);
+        }
+    }
+    return members;
+}
+
+/** The account with this email as a {@link ProjectMember}, or undefined. The email's column ignores case. */
+async function findMemberByEmail(email: string): Promise<ProjectMember | undefined> {
+    const selectQuery = `SELECT ${MEMBER_COLUMNS} FROM users WHERE email = ?`;
+    const [rows] = await db.query<RowDataPacket[]>(selectQuery, [email]);
+    return rows[0] as ProjectMember | undefined;
+}
+
+/**
+ * A project's member IDs, read with its row locked until the caller's transaction ends, so two member changes at
+ * once wait for each other instead of one overwriting the other. null when the project is gone.
+ */
+async function lockMemberIds(connection: PoolConnection, projectId: string): Promise<string[] | null> {
+    const selectQuery = `SELECT member_user_ids AS memberUserIds FROM projects WHERE id = ? FOR UPDATE`;
+    const [rows] = await connection.query<RowDataPacket[]>(selectQuery, [projectId]);
+    const row = rows[0];
+    if (!row) {
+        return null;
+    }
+    return row.memberUserIds as string[];
 }
 
 /** Deletes every blueprint, asset and dialogue in a project. Runs in the caller's transaction. */

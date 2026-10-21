@@ -3,10 +3,12 @@ import { useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { useCurrentProject } from '../../api/useCurrentProject.js'
 import AppShell from '../../components/AppShell/AppShell.jsx'
+import BackupPreview from '../../components/BackupPreview/BackupPreview.jsx'
 import Button from '../../components/Button/Button.jsx'
 import ConfirmDialog from '../../components/ConfirmDialog/ConfirmDialog.jsx'
 import LoadingRecord from '../../components/LoadingRecord/LoadingRecord.jsx'
 import Section from '../../components/Section/Section.jsx'
+import SettingRow from '../../components/SettingRow/SettingRow.jsx'
 import { useToast } from '../../components/Toast/useToast.js'
 import {
   createBackup,
@@ -20,7 +22,6 @@ import { useAssets } from '../../data/useAssets.js'
 import { useDialogues } from '../../data/useDialogues.js'
 import { useBlueprints } from '../../schema/useBlueprints.js'
 import { downloadJson } from '../../utils/downloadJson.js'
-import { formatDateTime } from '../../utils/formatDate.js'
 import styles from './SettingsPage.module.css'
 
 /**
@@ -221,19 +222,6 @@ function SettingsPage() {
   )
 }
 
-/** One setting: a title and explanation on the left, its button (the children) on the right. */
-function SettingRow({ title, text, children }) {
-  return (
-    <div className={styles.setting}>
-      <div>
-        <h2 className={styles.settingTitle}>{title}</h2>
-        <p className={styles.settingText}>{text}</p>
-      </div>
-      {children}
-    </div>
-  )
-}
-
 /** A tile with how many there are of something, linking to its list. */
 function CountTile({ count, noun, to }) {
   let label = `${noun}s`
@@ -246,34 +234,6 @@ function CountTile({ count, noun, to }) {
       <span className={styles.countValue}>{count}</span>
       <span className={styles.countLabel}>{label}</span>
     </Link>
-  )
-}
-
-/** The backup file the user picked, with what's in it, waiting for them to restore it or cancel. */
-function BackupPreview({ pendingBackup, sending, onCancel, onRestore }) {
-  const backup = pendingBackup.backup
-  let made = 'Date unknown'
-  if (backup.createdAt) {
-    made = `Made ${formatDateTime(backup.createdAt)}`
-  }
-
-  return (
-    <div className={styles.preview}>
-      <div className={styles.previewText}>
-        <p>{pendingBackup.fileName}</p>
-        <p className={styles.settingText}>
-          {made} · {describeContents(backup)}
-        </p>
-      </div>
-      <div className="row">
-        <Button disabled={sending} onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button variant="danger" icon={RotateCcw} disabled={sending} onClick={onRestore}>
-          Restore this backup
-        </Button>
-      </div>
-    </div>
   )
 }
 

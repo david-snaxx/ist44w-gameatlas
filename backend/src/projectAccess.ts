@@ -9,11 +9,12 @@ import type {Project} from './types/project.ts';
  */
 
 /** SQL columns of a {@link Project}. */
-const PROJECT_COLUMNS = `id, name, created_at AS createdAt, member_user_ids AS memberUserIds,
-                         blueprint_ids AS blueprintIds, asset_ids AS assetIds, dialogue_ids AS dialogueIds`;
+export const PROJECT_COLUMNS = `id, name, created_at AS createdAt, personal_user_id AS personalUserId,
+                                member_user_ids AS memberUserIds, blueprint_ids AS blueprintIds,
+                                asset_ids AS assetIds, dialogue_ids AS dialogueIds`;
 
-/** The JSON array columns on a project that list what it contains. */
-export type ProjectList = 'blueprint_ids' | 'asset_ids' | 'dialogue_ids';
+/** The JSON array columns on a project: who is in it, and what it contains. */
+export type ProjectList = 'member_user_ids' | 'blueprint_ids' | 'asset_ids' | 'dialogue_ids';
 
 /** The result of {@link openProject}: a null `project` means answer with `status` and `message`. */
 export interface ProjectAccess {

@@ -107,12 +107,12 @@ async function askServer(user) {
 
 /**
  * Gets a user's {@link Project}s and each one's {@link Blueprint}s.
- * A user with no Projects yet (their first login) gets their personal Project first.
+ * A user without a personal Project yet (on their first login) gets it first.
  * @param user The logged-in {@link User}.
  */
 async function fetchProjects(user) {
     let listed = await listProjects()
-    if (!listed.error && listed.data.length === 0) {
+    if (!listed.error && !hasPersonalProject(listed.data, user)) {
         const filled = await createPersonalProject(user)
         if (filled.error) {
             return answerFor(user.id, [], {}, filled.error)
@@ -145,7 +145,7 @@ async function fetchProjects(user) {
  * @param user The {@link User} the Project is for.
  */
 async function createPersonalProject(user) {
-    const created = await createProject(personalProjectName(user))
+    const created = await createProject(personalProjectName(user), true)
     if (created.error) {
         return created
     }
@@ -155,6 +155,15 @@ async function createPersonalProject(user) {
         dialogues: STARTER_DIALOGUES
     }
     return replaceProjectContents(created.data.id, examples)
+}
+
+/**
+ * Whether one of these {@link Project}s is the user's personal one.
+ * @param projects The user's Projects.
+ * @param user The logged-in {@link User}.
+ */
+function hasPersonalProject(projects, user) {
+    return projects.some((project) => project.personalUserId === user.id)
 }
 
 /**
@@ -176,6 +185,38 @@ export function rememberProject(projectId) {
         return
     }
     commit({...currentProject, lastVisitedId: projectId})
+}
+
+/**
+ * Puts the server's copy of a {@link Project} in place of the old one, e.g. after renaming it.
+ * @param project The Project as the server answered it.
+ */
+export function replaceProject(project) {
+    const nextProjects = []
+    for (const current of currentProject.projects) {
+        if (current.id === project.id) {
+            nextProjects.push(project)
+        } else {
+            nextProjects.push(current)
+        }
+    }
+    commit({...currentProject, projects: nextProjects})
+}
+
+/**
+ * Takes a {@link Project} out of the answer after the user deleted or left it on the server.
+ * @param projectId The Project's id.
+ */
+export function forgetProject(projectId) {
+    const nextProjects = currentProject.projects.filter((project) => project.id !== projectId)
+    const nextBlueprints = {...currentProject.blueprints}
+    delete nextBlueprints[projectId]
+
+    let lastVisitedId = currentProject.lastVisitedId
+    if (lastVisitedId === projectId) {
+        lastVisitedId = null
+    }
+    commit({...currentProject, projects: nextProjects, blueprints: nextBlueprints, lastVisitedId: lastVisitedId})
 }
 
 /**
