@@ -52,11 +52,11 @@ const LIST_COLUMNS = [
 const KEY_INPUT_ID = 'asset-meta-id'
 
 /**
- * Route component for /blueprints/:blueprintId/assets/new and .../assets/:assetKey/edit.
+ * Route component for /projects/:projectId/blueprints/:blueprintId/assets/new and .../assets/:assetKey/edit.
  * The `key` gives every asset (and every "new asset" visit) a fresh editor with fresh state.
  */
 function AssetEditorPage() {
-  const { blueprintId, assetKey } = useParams()
+  const { projectId, blueprintId, assetKey } = useParams()
   const location = useLocation()
   const savedBlueprint = useBlueprint(blueprintId)
   const saved = useAsset(blueprintId, assetKey)
@@ -81,6 +81,7 @@ function AssetEditorPage() {
   return (
     <AssetEditor
       key={editorKey}
+      projectId={projectId}
       blueprintId={blueprintId}
       assetKey={assetKey}
       savedAsset={saved.asset}
@@ -98,7 +99,7 @@ function AssetEditorPage() {
  * origin: 'file' (the default) | 'duplicate'; originName: the name of the asset that was duplicated
  * followName: for duplicates, whether the ID should keep following the name
  */
-function AssetEditor({ blueprintId, assetKey, savedAsset, imported, origin, originName, followName }) {
+function AssetEditor({ projectId, blueprintId, assetKey, savedAsset, imported, origin, originName, followName }) {
   const isDuplicate = origin === 'duplicate'
   // An imported file keeps its ID; a duplicate's ID follows its name (if it has one)
   const importedKeyIsFixed = Boolean(imported?.key) && !(isDuplicate && followName)
@@ -175,7 +176,7 @@ function AssetEditor({ blueprintId, assetKey, savedAsset, imported, origin, orig
   // ---------- Not found ----------
 
   if (!blueprint || (assetKey && !baseline)) {
-    return <MissingAsset blueprint={blueprint} blueprintId={blueprintId} assetKey={assetKey} />
+    return <MissingAsset projectId={projectId} blueprint={blueprint} blueprintId={blueprintId} assetKey={assetKey} />
   }
 
   // ---------- Editing ----------
@@ -246,7 +247,7 @@ function AssetEditor({ blueprintId, assetKey, savedAsset, imported, origin, orig
     if (key !== assetKey) {
       // New asset, or its ID changed: move to its new address
       allowLeaving()
-      navigate(`/blueprints/${blueprint.id}/assets/${key}/edit`, { replace: true })
+      navigate(`/projects/${projectId}/blueprints/${blueprint.id}/assets/${key}/edit`, { replace: true })
     }
   }
 
@@ -272,7 +273,7 @@ function AssetEditor({ blueprintId, assetKey, savedAsset, imported, origin, orig
 
     allowLeaving()
     toast.show({ status: 'success', message: `Asset "${assetLabel(baseline, blueprint)}" deleted` })
-    navigate(`/blueprints/${blueprint.id}/assets`, { replace: true })
+    navigate(`/projects/${projectId}/blueprints/${blueprint.id}/assets`, { replace: true })
   }
 
   const exportShape = toExport({ key: key, schemaId: blueprint.id, schemaVersion: blueprint.version, data: data })
@@ -289,13 +290,13 @@ function AssetEditor({ blueprintId, assetKey, savedAsset, imported, origin, orig
 
   function handleDuplicate() {
     const state = duplicateAssetState(baseline, blueprint, blueprintAssets)
-    navigate(`/blueprints/${blueprint.id}/assets/new`, { state: state })
+    navigate(`/projects/${projectId}/blueprints/${blueprint.id}/assets/new`, { state: state })
   }
 
   function openAsset(id) {
     const asset = blueprintAssets.find((candidate) => candidate.id === id)
     if (asset.key !== assetKey) {
-      navigate(`/blueprints/${blueprint.id}/assets/${asset.key}/edit`)
+      navigate(`/projects/${projectId}/blueprints/${blueprint.id}/assets/${asset.key}/edit`)
     }
   }
 
@@ -311,11 +312,11 @@ function AssetEditor({ blueprintId, assetKey, savedAsset, imported, origin, orig
   }
 
   const crumbs = [
-    { label: 'Blueprints', to: '/blueprints' },
-    { label: blueprint.name, to: `/blueprints/${blueprint.id}/assets` },
+    { label: 'Blueprints', to: `/projects/${projectId}/blueprints` },
+    { label: blueprint.name, to: `/projects/${projectId}/blueprints/${blueprint.id}/assets` },
   ]
   if (baseline) {
-    crumbs.push({ label: title, to: `/blueprints/${blueprint.id}/assets/${baseline.key}` })
+    crumbs.push({ label: title, to: `/projects/${projectId}/blueprints/${blueprint.id}/assets/${baseline.key}` })
     crumbs.push({ label: 'Edit' })
   } else {
     crumbs.push({ label: title })
@@ -336,7 +337,7 @@ function AssetEditor({ blueprintId, assetKey, savedAsset, imported, origin, orig
           variant="ghost"
           icon={Eye}
           title="View asset"
-          onClick={() => navigate(`/blueprints/${blueprint.id}/assets/${baseline.key}`)}
+          onClick={() => navigate(`/projects/${projectId}/blueprints/${blueprint.id}/assets/${baseline.key}`)}
         />
       </>
     )
@@ -359,7 +360,7 @@ function AssetEditor({ blueprintId, assetKey, savedAsset, imported, origin, orig
   if (fields.length === 0) {
     form = (
       <EmptyState message={`The ${blueprint.name} blueprint has no properties yet.`}>
-        <Button icon={Pencil} onClick={() => navigate(`/blueprints/${blueprint.id}`)}>
+        <Button icon={Pencil} onClick={() => navigate(`/projects/${projectId}/blueprints/${blueprint.id}`)}>
           Edit blueprint
         </Button>
       </EmptyState>
@@ -371,7 +372,7 @@ function AssetEditor({ blueprintId, assetKey, savedAsset, imported, origin, orig
       actions={
         <TopBarActions
           noun="asset"
-          newPath={`/blueprints/${blueprint.id}/assets/new`}
+          newPath={`/projects/${projectId}/blueprints/${blueprint.id}/assets/new`}
           importFile={(text) => parseAssetFile(text, blueprint)}
         />
       }
@@ -386,7 +387,7 @@ function AssetEditor({ blueprintId, assetKey, savedAsset, imported, origin, orig
               variant="ghost"
               icon={Plus}
               title="New asset"
-              onClick={() => navigate(`/blueprints/${blueprint.id}/assets/new`)}
+              onClick={() => navigate(`/projects/${projectId}/blueprints/${blueprint.id}/assets/new`)}
             />
           }
         >

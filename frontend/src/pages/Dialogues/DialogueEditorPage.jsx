@@ -44,12 +44,12 @@ import DialogueCanvas from './DialogueCanvas.jsx'
 import { DialogueEditorContext } from './DialogueEditorContext.js'
 
 /**
- * Route component for /dialogues/new and /dialogues/:dialogueKey.
+ * Route component for /projects/:projectId/dialogues/new and .../dialogues/:dialogueKey.
  * ReactFlowProvider lets the editor (not just the canvas) use React Flow's helpers, e.g. to center a node.
  * The `key` gives every dialogue (and every "new dialogue" visit) a fresh editor.
  */
 function DialogueEditorPage() {
-  const { dialogueKey } = useParams()
+  const { projectId, dialogueKey } = useParams()
   const location = useLocation()
   const blueprintsStatus = useBlueprintsStatus()
   const saved = useDialogue(dialogueKey)
@@ -74,6 +74,7 @@ function DialogueEditorPage() {
   return (
     <ReactFlowProvider key={editorKey}>
       <DialogueEditor
+        projectId={projectId}
         dialogueKey={dialogueKey}
         savedDialogue={saved.dialogue}
         imported={state.imported}
@@ -90,7 +91,7 @@ function DialogueEditorPage() {
  * imported: { details, nodes, edges } to start a new dialogue from (an imported file or a duplicate)
  * origin: 'file' | 'duplicate'; originName: the name of the dialogue that was duplicated
  */
-function DialogueEditor({ dialogueKey, savedDialogue, imported, origin, originName }) {
+function DialogueEditor({ projectId, dialogueKey, savedDialogue, imported, origin, originName }) {
   const isDuplicate = origin === 'duplicate'
   const isFromFile = Boolean(imported) && !isDuplicate
   // An imported file's ID is kept as-is; a duplicate's ID keeps following its name
@@ -150,7 +151,7 @@ function DialogueEditor({ dialogueKey, savedDialogue, imported, origin, originNa
       <MissingRecord
         title="Dialogue not found"
         message={`There's no dialogue with the ID "${dialogueKey}".`}
-        back={{ to: '/dialogues', label: 'All dialogues' }}
+        back={{ to: `/projects/${projectId}/dialogues`, label: 'All dialogues' }}
       />
     )
   }
@@ -291,7 +292,7 @@ function DialogueEditor({ dialogueKey, savedDialogue, imported, origin, originNa
     if (saved.key !== dialogueKey) {
       // New dialogue, or its ID changed: move to its new address
       allowLeaving()
-      navigate(`/dialogues/${saved.key}`, { replace: true })
+      navigate(`/projects/${projectId}/dialogues/${saved.key}`, { replace: true })
     }
   }
 
@@ -327,7 +328,7 @@ function DialogueEditor({ dialogueKey, savedDialogue, imported, origin, originNa
 
     allowLeaving()
     toast.show({ status: 'success', message: `Dialogue "${baseline.name}" deleted` })
-    navigate('/dialogues', { replace: true })
+    navigate(`/projects/${projectId}/dialogues`, { replace: true })
   }
 
   const exportShape = toDialogueExport(combineDialogue(details, stored.nodes, stored.edges))
@@ -348,7 +349,7 @@ function DialogueEditor({ dialogueKey, savedDialogue, imported, origin, originNa
     for (const dialogue of dialogues) {
       existingKeys.push(dialogue.key)
     }
-    navigate('/dialogues/new', { state: duplicateDialogueState(baseline, existingKeys) })
+    navigate(`/projects/${projectId}/dialogues/new`, { state: duplicateDialogueState(baseline, existingKeys) })
   }
 
   // ---------- Display ----------
@@ -381,8 +382,8 @@ function DialogueEditor({ dialogueKey, savedDialogue, imported, origin, originNa
 
   return (
     <AppShell
-      actions={<TopBarActions noun="dialogue" newPath="/dialogues/new" importFile={parseDialogueFile} />}
-      crumbs={[{ label: 'Dialogues', to: '/dialogues' }, { label: title }]}
+      actions={<TopBarActions noun="dialogue" newPath={`/projects/${projectId}/dialogues/new`} importFile={parseDialogueFile} />}
+      crumbs={[{ label: 'Dialogues', to: `/projects/${projectId}/dialogues` }, { label: title }]}
       status={statusText(submitted, detailProblemCount, isDirty, baseline, graphProblems.length)}
     >
       {/* React 19 lets a context object be used directly as its provider */}

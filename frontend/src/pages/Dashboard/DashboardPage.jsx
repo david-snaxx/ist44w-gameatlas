@@ -1,9 +1,11 @@
 import { ArrowRight, Box, LayoutList, MessagesSquare } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
+import { useCurrentProject } from '../../api/useCurrentProject.js'
 import AppShell from '../../components/AppShell/AppShell.jsx'
 import Badge from '../../components/Badge/Badge.jsx'
 import LinkList from '../../components/LinkList/LinkList.jsx'
+import LoadingRecord from '../../components/LoadingRecord/LoadingRecord.jsx'
 import Section from '../../components/Section/Section.jsx'
 import { assetLabel, assetPath, countAssetProblems, referenceKeysFor } from '../../data/assetData.js'
 import { countNodes, dialogueCheckContext, validateDialogueGraph } from '../../data/dialogueGraph.js'
@@ -18,13 +20,21 @@ import styles from './DashboardPage.module.css'
 const MAX_LIST_ITEMS = 6
 const MAX_QUICK_ASSET_LINKS = 4
 
-/** The home page (/): an overview of every section, with shortcuts. */
+/** The home page (/): an overview of the last project visited (or the oldest), with shortcuts. */
 function DashboardPage() {
+  const currentProject = useCurrentProject()
   const blueprints = useBlueprints()
   const assets = useAssets()
   const dialogues = useDialogues()
   // Read the clock once when the page opens (reading it during every render would make renders unpredictable)
   const [now] = useState(() => new Date())
+
+  // Every link on the page goes into the project, so wait until it's known
+  if (!currentProject.project) {
+    return <LoadingRecord error={currentProject.error} />
+  }
+  const project = currentProject.project
+  const projectId = project.id
 
   // ---------- Status of every asset and dialogue ----------
 
@@ -56,8 +66,8 @@ function DashboardPage() {
 
   // ---------- Lists ----------
 
-  const needsAttention = listNeedsAttention(assetStatus, dialogueStatus)
-  const recentlyUpdated = listRecentlyUpdated(assetStatus, dialogues)
+  const needsAttention = listNeedsAttention(projectId, assetStatus, dialogueStatus)
+  const recentlyUpdated = listRecentlyUpdated(projectId, assetStatus, dialogues)
 
   let attentionBadge = null
   if (needsAttention.length > 0) {
@@ -72,7 +82,7 @@ function DashboardPage() {
             {now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
           </p>
           <h1>{greetingFor(now)}</h1>
-          <p className={styles.subtitle}>Here's your game data at a glance.</p>
+          <p className={styles.subtitle}>Here's the game data in {project.name} at a glance.</p>
         </header>
 
         <div className={styles.cards}>
@@ -84,7 +94,7 @@ function DashboardPage() {
             noun="asset"
             toFix={assetsToFix}
           >
-            <BlueprintLinks blueprints={blueprints} assets={assets} />
+            <BlueprintLinks projectId={projectId} blueprints={blueprints} assets={assets} />
           </SectionCard>
 
           <SectionCard
@@ -95,7 +105,7 @@ function DashboardPage() {
             noun="dialogue"
             detail={`${plural(totalLines, 'line')} · ${plural(totalChoices, 'player choice')}`}
             toFix={dialoguesToFix}
-            link={{ to: '/dialogues', label: 'All dialogues' }}
+            link={{ to: `/projects/${projectId}/dialogues`, label: 'All dialogues' }}
           />
 
           <SectionCard
@@ -105,7 +115,7 @@ function DashboardPage() {
             value={blueprints.length}
             noun="blueprint"
             detail={plural(totalProperties, 'property', 'properties')}
-            link={{ to: '/blueprints', label: 'All blueprints' }}
+            link={{ to: `/projects/${projectId}/blueprints`, label: 'All blueprints' }}
           />
         </div>
 
@@ -116,7 +126,7 @@ function DashboardPage() {
 
           <div className={styles.stack}>
             <Section title="Quick create">
-              <QuickCreate blueprints={blueprints} />
+              <QuickCreate projectId={projectId} blueprints={blueprints} />
             </Section>
 
             <Section title="Needs attention" actions={attentionBadge}>
@@ -187,11 +197,11 @@ function CardStatus({ toFix }) {
 }
 
 /** Inside the Assets card: All assets, then one link per blueprint with its asset count. */
-function BlueprintLinks({ blueprints, assets }) {
+function BlueprintLinks({ projectId, blueprints, assets }) {
   if (blueprints.length === 0) {
     return (
       <p className={styles.cardDetail}>
-        <Link to="/blueprints/new">Create a blueprint</Link> to start adding assets.
+        <Link to={`/projects/${projectId}/blueprints/new`}>Create a blueprint</Link> to start adding assets.
       </p>
     )
   }
@@ -205,13 +215,13 @@ function BlueprintLinks({ blueprints, assets }) {
       }
     }
     links.push(
-      <CountLink key={blueprint.id} to={`/blueprints/${blueprint.id}/assets`} label={blueprint.name} count={count} />,
+      <CountLink key={blueprint.id} to={`/projects/${projectId}/blueprints/${blueprint.id}/assets`} label={blueprint.name} count={count} />,
     )
   }
 
   return (
     <div>
-      <CountLink to="/assets" label="All assets" count={assets.length} />
+      <CountLink to={`/projects/${projectId}/assets`} label="All assets" count={assets.length} />
       {links}
     </div>
   )
@@ -229,12 +239,12 @@ function CountLink({ to, label, count }) {
 }
 
 /** Shortcuts to start something new: a dialogue, an asset of the first few blueprints, a blueprint. */
-function QuickCreate({ blueprints }) {
-  const items = [{ icon: MessagesSquare, label: 'New dialogue', to: '/dialogues/new' }]
+function QuickCreate({ projectId, blueprints }) {
+  const items = [{ icon: MessagesSquare, label: 'New dialogue', to: `/projects/${projectId}/dialogues/new` }]
   for (const blueprint of blueprints.slice(0, MAX_QUICK_ASSET_LINKS)) {
-    items.push({ icon: Box, label: `New ${blueprint.name}`, to: `/blueprints/${blueprint.id}/assets/new` })
+    items.push({ icon: Box, label: `New ${blueprint.name}`, to: `/projects/${projectId}/blueprints/${blueprint.id}/assets/new` })
   }
-  items.push({ icon: LayoutList, label: 'New blueprint', to: '/blueprints/new' })
+  items.push({ icon: LayoutList, label: 'New blueprint', to: `/projects/${projectId}/blueprints/new` })
 
   return (
     <div className={styles.quickGrid}>
@@ -316,7 +326,7 @@ function buildDialogueStatus(dialogues, blueprints, assets) {
 }
 
 // Assets with problems or saved with an older blueprint, then dialogues with problems (as LinkList items)
-function listNeedsAttention(assetStatus, dialogueStatus) {
+function listNeedsAttention(projectId, assetStatus, dialogueStatus) {
   const items = []
 
   for (const status of assetStatus) {
@@ -331,7 +341,7 @@ function listNeedsAttention(assetStatus, dialogueStatus) {
       icon: Box,
       label: assetLabel(status.asset, status.blueprint),
       hint: `${status.blueprint.name} asset · ${reason}`,
-      to: assetPath(status.asset.schemaId, status.asset.key),
+      to: assetPath(projectId, status.asset.schemaId, status.asset.key),
     })
   }
 
@@ -341,7 +351,7 @@ function listNeedsAttention(assetStatus, dialogueStatus) {
         icon: MessagesSquare,
         label: status.dialogue.name,
         hint: `Dialogue · ${plural(status.problems, 'problem')}`,
-        to: `/dialogues/${status.dialogue.key}`,
+        to: `/projects/${projectId}/dialogues/${status.dialogue.key}`,
       })
     }
   }
@@ -350,7 +360,7 @@ function listNeedsAttention(assetStatus, dialogueStatus) {
 }
 
 // The most recently saved assets and dialogues, newest first (as LinkList items)
-function listRecentlyUpdated(assetStatus, dialogues) {
+function listRecentlyUpdated(projectId, assetStatus, dialogues) {
   const items = []
   for (const status of assetStatus) {
     items.push({
@@ -358,7 +368,7 @@ function listRecentlyUpdated(assetStatus, dialogues) {
       label: assetLabel(status.asset, status.blueprint),
       hint: `${status.blueprint.name} asset`,
       updatedAt: status.asset.updatedAt,
-      to: assetPath(status.asset.schemaId, status.asset.key),
+      to: assetPath(projectId, status.asset.schemaId, status.asset.key),
     })
   }
   for (const dialogue of dialogues) {
@@ -367,7 +377,7 @@ function listRecentlyUpdated(assetStatus, dialogues) {
       label: dialogue.name,
       hint: 'Dialogue',
       updatedAt: dialogue.updatedAt,
-      to: `/dialogues/${dialogue.key}`,
+      to: `/projects/${projectId}/dialogues/${dialogue.key}`,
     })
   }
 

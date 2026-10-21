@@ -1,4 +1,5 @@
 import * as blueprintsApi from '../api/blueprints.js'
+import { setProjectBlueprints } from '../api/currentProjectStore.js'
 
 /*
  * The current project's blueprints, loaded from the server once per page load and kept in memory. Read them with
@@ -19,6 +20,10 @@ let loadingFor = null
 /** Replaces what's in memory and notifies every subscriber, so the pages re-render. */
 function commit(next) {
   cache = next
+  // The sidebar lists every project's blueprints from the project store, so it hears about this project's too
+  if (cache.projectId !== null && cache.status === 'ready') {
+    setProjectBlueprints(cache.projectId, cache.blueprints)
+  }
   for (const listener of listeners) {
     listener()
   }

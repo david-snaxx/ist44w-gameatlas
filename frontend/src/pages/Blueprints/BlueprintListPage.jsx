@@ -1,5 +1,5 @@
 import { Plus } from 'lucide-react'
-import { useNavigate } from 'react-router'
+import { useNavigate, useParams } from 'react-router'
 import Button from '../../components/Button/Button.jsx'
 import EmptyState from '../../components/EmptyState/EmptyState.jsx'
 import ListPage from '../../components/ListPage/ListPage.jsx'
@@ -17,8 +17,9 @@ const COLUMNS = [
   { key: 'version', label: 'Version' },
 ]
 
-/** Every blueprint in a table (/blueprints). */
+/** Every blueprint in a table (/projects/:projectId/blueprints). */
 function BlueprintListPage() {
+  const { projectId } = useParams()
   const blueprints = useBlueprints()
   const assets = useAssets()
   const navigate = useNavigate()
@@ -45,7 +46,7 @@ function BlueprintListPage() {
 
   // The same button appears in the header and in the empty state
   const newButton = (
-    <Button variant="primary" icon={Plus} onClick={() => navigate('/blueprints/new')}>
+    <Button variant="primary" icon={Plus} onClick={() => navigate(`/projects/${projectId}/blueprints/new`)}>
       New blueprint
     </Button>
   )
@@ -56,12 +57,12 @@ function BlueprintListPage() {
       intro="A blueprint lists the properties every asset of one kind has, like the fields of a class. Asset forms are built from blueprints."
       noun="blueprint"
       crumbs={[{ label: 'Blueprints' }]}
-      topBarActions={<TopBarActions noun="blueprint" newPath="/blueprints/new" importFile={parseBlueprintFile} />}
+      topBarActions={<TopBarActions noun="blueprint" newPath={`/projects/${projectId}/blueprints/new`} importFile={parseBlueprintFile} />}
       actions={newButton}
       columns={COLUMNS}
       rows={rows}
       total={rows.length}
-      onSelect={(id) => navigate(`/blueprints/${id}`)}
+      onSelect={(id) => navigate(`/projects/${projectId}/blueprints/${id}`)}
       empty={<EmptyState message="No blueprints yet.">{newButton}</EmptyState>}
     />
   )

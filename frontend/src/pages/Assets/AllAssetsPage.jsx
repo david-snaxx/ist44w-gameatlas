@@ -1,6 +1,6 @@
 import { Download, LayoutList, Plus } from 'lucide-react'
 import { useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, useParams } from 'react-router'
 import Badge from '../../components/Badge/Badge.jsx'
 import Button from '../../components/Button/Button.jsx'
 import EmptyState from '../../components/EmptyState/EmptyState.jsx'
@@ -23,8 +23,9 @@ const COLUMNS = [
   { key: 'updated', label: 'Updated', render: (row) => formatDateTime(row.updated) },
 ]
 
-/** Every asset from every blueprint in one table (/assets). */
+/** Every asset from every blueprint in one table (/projects/:projectId/assets). */
 function AllAssetsPage() {
+  const { projectId } = useParams()
   const blueprints = useBlueprints()
   const assets = useAssets()
   const navigate = useNavigate()
@@ -54,7 +55,7 @@ function AllAssetsPage() {
 
   function openAsset(id) {
     const row = visibleRows.find((candidate) => candidate.id === id)
-    navigate(assetPath(row.blueprintId, row.key))
+    navigate(assetPath(projectId, row.blueprintId, row.key))
   }
 
   let downloadLabel = 'Download all'
@@ -85,7 +86,7 @@ function AllAssetsPage() {
       rows={visibleRows}
       total={rows.length}
       onSelect={openAsset}
-      empty={<NoAssetsYet blueprints={blueprints} />}
+      empty={<NoAssetsYet projectId={projectId} blueprints={blueprints} />}
     />
   )
 }
@@ -102,13 +103,13 @@ function StatusBadge({ row }) {
 }
 
 /** What the page shows when there are no assets at all: a way to go and make one. */
-function NoAssetsYet({ blueprints }) {
+function NoAssetsYet({ projectId, blueprints }) {
   const navigate = useNavigate()
 
   if (blueprints.length === 0) {
     return (
       <EmptyState message="No blueprints yet, so there are no assets.">
-        <Button icon={LayoutList} onClick={() => navigate('/blueprints')}>
+        <Button icon={LayoutList} onClick={() => navigate(`/projects/${projectId}/blueprints`)}>
           All blueprints
         </Button>
       </EmptyState>
@@ -118,7 +119,7 @@ function NoAssetsYet({ blueprints }) {
   const firstBlueprint = blueprints[0]
   return (
     <EmptyState message="No assets yet.">
-      <Button icon={Plus} onClick={() => navigate(`/blueprints/${firstBlueprint.id}/assets`)}>
+      <Button icon={Plus} onClick={() => navigate(`/projects/${projectId}/blueprints/${firstBlueprint.id}/assets`)}>
         Add a {firstBlueprint.name}
       </Button>
     </EmptyState>

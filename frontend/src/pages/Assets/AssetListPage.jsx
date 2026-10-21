@@ -27,9 +27,9 @@ import { formatDateTime } from '../../utils/formatDate.js'
 const COLUMN_TYPES = ['string', 'int', 'float', 'bool', 'enum', 'reference']
 const MAX_PROPERTY_COLUMNS = 4
 
-/** The table of every asset made from one blueprint (/blueprints/:blueprintId/assets). */
+/** The table of every asset made from one blueprint (/projects/:projectId/blueprints/:blueprintId/assets). */
 function AssetListPage() {
-  const { blueprintId } = useParams()
+  const { projectId, blueprintId } = useParams()
   const blueprints = useBlueprints()
   const assets = useAssets()
   const navigate = useNavigate()
@@ -48,7 +48,7 @@ function AssetListPage() {
       <MissingRecord
         title="Blueprint not found"
         message={`There's no blueprint with the ID "${blueprintId}".`}
-        back={{ to: '/blueprints', label: 'All blueprints' }}
+        back={{ to: `/projects/${projectId}/blueprints`, label: 'All blueprints' }}
       />
     )
   }
@@ -62,7 +62,7 @@ function AssetListPage() {
   const referenceKeys = referenceKeysFor(blueprints, assets)
 
   function newAsset() {
-    navigate(`/blueprints/${blueprint.id}/assets/new`)
+    navigate(`/projects/${projectId}/blueprints/${blueprint.id}/assets/new`)
   }
 
   function handleDownload() {
@@ -78,7 +78,7 @@ function AssetListPage() {
 
   function openAsset(id) {
     const row = rows.find((candidate) => candidate.id === id)
-    navigate(assetPath(blueprint.id, row.key))
+    navigate(assetPath(projectId, blueprint.id, row.key))
   }
 
   // The same button appears in the header and in the empty state
@@ -99,20 +99,20 @@ function AssetListPage() {
       intro={intro}
       noun="asset"
       crumbs={[
-        { label: 'Blueprints', to: '/blueprints' },
-        { label: blueprint.name, to: `/blueprints/${blueprint.id}` },
+        { label: 'Blueprints', to: `/projects/${projectId}/blueprints` },
+        { label: blueprint.name, to: `/projects/${projectId}/blueprints/${blueprint.id}` },
         { label: 'Assets' },
       ]}
       topBarActions={
         <TopBarActions
           noun="asset"
-          newPath={`/blueprints/${blueprint.id}/assets/new`}
+          newPath={`/projects/${projectId}/blueprints/${blueprint.id}/assets/new`}
           importFile={(text) => parseAssetFile(text, blueprint)}
         />
       }
       actions={
         <>
-          <Button icon={Pencil} onClick={() => navigate(`/blueprints/${blueprint.id}`)}>
+          <Button icon={Pencil} onClick={() => navigate(`/projects/${projectId}/blueprints/${blueprint.id}`)}>
             Edit blueprint
           </Button>
           <Button icon={Download} disabled={rows.length === 0} onClick={handleDownload}>

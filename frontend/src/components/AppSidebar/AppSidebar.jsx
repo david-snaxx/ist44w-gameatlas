@@ -5,7 +5,6 @@ import { clearCurrentUser } from '../../api/currentUserStore.js'
 import { logOut } from '../../api/users.js'
 import { useCurrentProject } from '../../api/useCurrentProject.js'
 import { useCurrentUser } from '../../api/useCurrentUser.js'
-import { useBlueprints } from '../../schema/useBlueprints.js'
 import { useToast } from '../Toast/useToast.js'
 
 // Projects whose section is folded. Kept outside the components so it survives moving between pages.
@@ -14,7 +13,6 @@ const foldedProjectIds = new Set()
 /** The main navigation in every page's AppShell: Home, one foldable section per project, then General. */
 function AppSidebar() {
   const currentProject = useCurrentProject()
-  const blueprints = useBlueprints()
   const { pathname } = useLocation()
 
   // Each link is a plain object: { label, icon, to }
@@ -25,12 +23,7 @@ function AppSidebar() {
   const allLinks = [homeLink, ...generalLinks]
   const sections = []
   for (const project of currentProject.projects) {
-    // The current project uses the blueprint store, so a save shows at once; others show what the page loaded
-    let projectBlueprints = currentProject.blueprints[project.id]
-    if (currentProject.project && project.id === currentProject.project.id) {
-      projectBlueprints = blueprints
-    }
-    const section = buildProjectSection(project, projectBlueprints)
+    const section = buildProjectSection(project, currentProject.blueprints[project.id])
     sections.push(section)
     for (const link of section.links) {
       allLinks.push(link)
@@ -54,17 +47,15 @@ function AppSidebar() {
   )
 }
 
-/**
- * One project's links in the sidebar's three groups, plus all of them (`links`) for findActiveRoute(). Until there's
- * a project picker, every project's links go to the same pages.
- */
+/** One project's links in the sidebar's three groups, plus all of them (`links`) for findActiveRoute(). */
 function buildProjectSection(project, blueprints = []) {
-  const assetLinks = [{ label: 'All assets', icon: Boxes, to: '/assets' }]
+  const projectPath = `/projects/${project.id}`
+  const assetLinks = [{ label: 'All assets', icon: Boxes, to: `${projectPath}/assets` }]
   for (const blueprint of blueprints) {
-    assetLinks.push({ label: blueprint.name, icon: Box, to: `/blueprints/${blueprint.id}/assets` })
+    assetLinks.push({ label: blueprint.name, icon: Box, to: `${projectPath}/blueprints/${blueprint.id}/assets` })
   }
-  const dialogueLinks = [{ label: 'All dialogues', icon: MessagesSquare, to: '/dialogues' }]
-  const blueprintLinks = [{ label: 'All blueprints', icon: LayoutList, to: '/blueprints' }]
+  const dialogueLinks = [{ label: 'All dialogues', icon: MessagesSquare, to: `${projectPath}/dialogues` }]
+  const blueprintLinks = [{ label: 'All blueprints', icon: LayoutList, to: `${projectPath}/blueprints` }]
 
   return {
     project: project,
@@ -76,8 +67,8 @@ function buildProjectSection(project, blueprints = []) {
 }
 
 /**
- * The link to highlight: the longest route matching the URL. /blueprints/item/assets/sword_of_fire matches
- * "/blueprints" and "/blueprints/item/assets", and the longer one wins.
+ * The link to highlight: the longest route matching the URL. /projects/<id>/blueprints/item/assets/sword_of_fire
+ * matches ".../blueprints" and ".../blueprints/item/assets", and the longer one wins.
  */
 function findActiveRoute(links, pathname) {
   let bestRoute = null

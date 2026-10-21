@@ -7,7 +7,7 @@ import { useToast } from '../Toast/useToast.js'
 /**
  * The top bar's Import and New buttons. An import opens the editor pre-filled (STYLE-GUIDELINES §7.15).
  * noun: what is being made, e.g. "asset" (used in both button labels)
- * newPath: the editor route for a new one, e.g. "/dialogues/new"
+ * newPath: the editor route for a new one, e.g. "/projects/<id>/dialogues/new"
  * importFile(text): parses a chosen file and returns { error } or { imported }
  */
 function TopBarActions({ noun, newPath, importFile }) {

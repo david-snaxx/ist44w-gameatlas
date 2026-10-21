@@ -1,9 +1,11 @@
 import { Download, RotateCcw, Trash2, Upload } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { Link } from 'react-router'
+import { useCurrentProject } from '../../api/useCurrentProject.js'
 import AppShell from '../../components/AppShell/AppShell.jsx'
 import Button from '../../components/Button/Button.jsx'
 import ConfirmDialog from '../../components/ConfirmDialog/ConfirmDialog.jsx'
+import LoadingRecord from '../../components/LoadingRecord/LoadingRecord.jsx'
 import Section from '../../components/Section/Section.jsx'
 import { useToast } from '../../components/Toast/useToast.js'
 import {
@@ -21,8 +23,12 @@ import { downloadJson } from '../../utils/downloadJson.js'
 import { formatDateTime } from '../../utils/formatDate.js'
 import styles from './SettingsPage.module.css'
 
-/** General settings (/settings): what's stored, backup and restore, and starting over. */
+/**
+ * General settings (/settings): what's stored, backup and restore, and starting over, for the last project visited
+ * (or the oldest).
+ */
 function SettingsPage() {
+  const currentProject = useCurrentProject()
   const blueprints = useBlueprints()
   const assets = useAssets()
   const dialogues = useDialogues()
@@ -35,6 +41,12 @@ function SettingsPage() {
   // True while a restore, reset or delete waits for the server, so the buttons can't send it twice
   const [sending, setSending] = useState(false)
 
+  // Everything here acts on one project, so wait until it's known
+  if (!currentProject.project) {
+    return <LoadingRecord error={currentProject.error} />
+  }
+  const project = currentProject.project
+
   const current = { blueprints: blueprints, assets: assets, dialogues: dialogues }
   const storedSize = new Blob([JSON.stringify(current)]).size
 
@@ -42,7 +54,7 @@ function SettingsPage() {
     const createdAt = new Date().toISOString()
     const date = createdAt.slice(0, 10) // just "2026-09-24"
     downloadJson(`gameatlas-backup-${date}.json`, createBackup(current, createdAt))
-    toast.show({ status: 'success', message: 'Backup downloaded' })
+    toast.show({ status: 'success', message: `Backup of "${project.name}" downloaded` })
   }
 
   // The hidden file input reports the file the user picked
@@ -64,18 +76,18 @@ function SettingsPage() {
 
   function askToRestore() {
     async function restore() {
-      const result = await restoreData(pendingBackup.backup)
+      const result = await restoreData(project.id, pendingBackup.backup)
       if (result.error) {
         toast.show({ status: 'error', message: result.error })
         return
       }
       setPendingBackup(null)
-      toast.show({ status: 'success', message: 'Backup restored' })
+      toast.show({ status: 'success', message: `Backup restored to "${project.name}"` })
     }
 
     setConfirmation({
-      title: 'Replace everything with this backup?',
-      message: `Your ${describeContents(current)} will be replaced by the backup's ${describeContents(pendingBackup.backup)}. This can't be undone, so download a backup of your current data first if you might need it.`,
+      title: `Replace everything in "${project.name}" with this backup?`,
+      message: `The ${describeContents(current)} in "${project.name}" will be replaced by the backup's ${describeContents(pendingBackup.backup)}. This can't be undone, so download a backup of this project first if you might need it.`,
       confirmLabel: 'Replace everything',
       run: restore,
     })
@@ -83,17 +95,17 @@ function SettingsPage() {
 
   function askToReset() {
     async function reset() {
-      const result = await resetToExampleData()
+      const result = await resetToExampleData(project.id)
       if (result.error) {
         toast.show({ status: 'error', message: result.error })
         return
       }
-      toast.show({ status: 'success', message: 'Example data restored' })
+      toast.show({ status: 'success', message: `"${project.name}" reset to example data` })
     }
 
     setConfirmation({
-      title: 'Reset to example data?',
-      message: `Your ${describeContents(current)} will be replaced by the example blueprints, assets and dialogue. This can't be undone.`,
+      title: `Reset "${project.name}" to example data?`,
+      message: `The ${describeContents(current)} in "${project.name}" will be replaced by the example blueprints, assets and dialogue. This can't be undone.`,
       confirmLabel: 'Reset data',
       run: reset,
     })
@@ -101,17 +113,17 @@ function SettingsPage() {
 
   function askToDeleteAll() {
     async function deleteEverything() {
-      const result = await deleteAllData()
+      const result = await deleteAllData(project.id)
       if (result.error) {
         toast.show({ status: 'error', message: result.error })
         return
       }
-      toast.show({ status: 'success', message: 'All data deleted' })
+      toast.show({ status: 'success', message: `Everything in "${project.name}" deleted` })
     }
 
     setConfirmation({
-      title: 'Delete all data?',
-      message: `Your ${describeContents(current)} will be deleted. This can't be undone.`,
+      title: `Delete everything in "${project.name}"?`,
+      message: `The ${describeContents(current)} in "${project.name}" will be deleted. This can't be undone.`,
       confirmLabel: 'Delete everything',
       run: deleteEverything,
     })
@@ -131,17 +143,19 @@ function SettingsPage() {
       <div className={styles.page}>
         <header>
           <h1>Settings</h1>
-          <p className="page-intro">Back up your work, restore it, or start over.</p>
+          <p className="page-intro">
+            Back up, restore or reset {project.name}. Everything here acts on the project you opened last.
+          </p>
         </header>
 
         <Section title="Your data">
           <div className={styles.counts}>
-            <CountTile count={blueprints.length} noun="blueprint" to="/blueprints" />
-            <CountTile count={assets.length} noun="asset" to="/assets" />
-            <CountTile count={dialogues.length} noun="dialogue" to="/dialogues" />
+            <CountTile count={blueprints.length} noun="blueprint" to={`/projects/${project.id}/blueprints`} />
+            <CountTile count={assets.length} noun="asset" to={`/projects/${project.id}/assets`} />
+            <CountTile count={dialogues.length} noun="dialogue" to={`/projects/${project.id}/dialogues`} />
           </div>
           <p className="small muted">
-            Everything is saved on the server, in your project. Download a backup now and then to keep a copy of your
+            Everything is saved on the server, in this project. Download a backup now and then to keep a copy of your
             own.
           </p>
         </Section>
@@ -156,7 +170,7 @@ function SettingsPage() {
             </Button>
           </SettingRow>
 
-          <SettingRow title="Restore from a backup" text="Replaces everything in your project with the contents of a backup file.">
+          <SettingRow title="Restore from a backup" text="Replaces everything in this project with the contents of a backup file.">
             {/* The real file picker is hidden; the button below opens it */}
             <input ref={fileInputRef} type="file" accept=".json,application/json" hidden onChange={chooseBackupFile} />
             <Button icon={Upload} disabled={sending} onClick={() => fileInputRef.current.click()}>

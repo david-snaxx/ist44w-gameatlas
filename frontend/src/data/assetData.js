@@ -140,9 +140,9 @@ export function toData(fields, values = {}) {
 
 // ---------- Addresses ----------
 
-/** The read-only view of an asset. Add "/edit" for its editor. */
-export function assetPath(schemaId, key) {
-  return `/blueprints/${schemaId}/assets/${key}`
+/** The read-only view of an asset in a project. Add "/edit" for its editor. */
+export function assetPath(projectId, schemaId, key) {
+  return `/projects/${projectId}/blueprints/${schemaId}/assets/${key}`
 }
 
 /** { [blueprintId]: [asset keys] }, which link validation uses to spot links to assets that no longer exist. */

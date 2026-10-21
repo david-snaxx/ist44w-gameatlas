@@ -6,7 +6,8 @@ import {createProject, listProjects, replaceProjectContents} from './projects.js
 
 /*
  * Stores the logged-in user's projects in the app's memory.
- * The user's projects are read with useCurrentProject() and loaded from the database once per page load.
+ * The user's projects are read with useCurrentProject(), which picks the one a page is about, and are loaded from
+ * the database once per page load.
  */
 
 /** The functions to call whenever the answer changes (see subscribe()). */
@@ -14,21 +15,21 @@ const listeners = new Set()
 
 /**
  * The answer before the server has given one.
- * Once it has, it takes the form { checked, userId, projects, project, blueprints, error } where:
+ * Once it has, it takes the form { checked, userId, projects, blueprints, error, lastVisitedId } where:
  * - checked: true once the server has answered
  * - userId: the user these {@link Project}s belong to
- * - projects: the user's Projects
- * - project: the Project the user works in
+ * - projects: the user's Projects, oldest first
  * - blueprints: each Project's {@link Blueprint}s by Project id
  * - error: what went wrong while asking
+ * - lastVisitedId: the Project whose pages the user opened last, or null before they've opened any
  */
 export const NOT_CHECKED = {
     checked: false,
     userId: null,
     projects: [],
-    project: null,
     blueprints: {},
-    error: null
+    error: null,
+    lastVisitedId: null
 }
 
 /** The current answer (see {@link NOT_CHECKED}). */
@@ -166,23 +167,51 @@ function personalProjectName(user) {
 }
 
 /**
- * A complete answer, working in the first (oldest) {@link Project}.
+ * Remembers the {@link Project} whose pages the user just opened, so pages without a project in their URL (home,
+ * settings) use it too.
+ * @param projectId The Project's id.
+ */
+export function rememberProject(projectId) {
+    if (currentProject.lastVisitedId === projectId) {
+        return
+    }
+    commit({...currentProject, lastVisitedId: projectId})
+}
+
+/**
+ * Replaces one {@link Project}'s {@link Blueprint}s after the blueprint store loaded or changed them, so the sidebar
+ * shows what's saved now in every Project, not just the one open. Does nothing for a Project that isn't the user's.
+ * @param projectId The Project's id.
+ * @param blueprints Its Blueprints.
+ */
+export function setProjectBlueprints(projectId, blueprints) {
+    if (currentProject.blueprints[projectId] === blueprints) {
+        return
+    }
+    const isUsersProject = currentProject.projects.some((project) => project.id === projectId)
+    if (!isUsersProject) {
+        return
+    }
+
+    const nextBlueprints = {...currentProject.blueprints}
+    nextBlueprints[projectId] = blueprints
+    commit({...currentProject, blueprints: nextBlueprints})
+}
+
+/**
+ * A complete answer. Which {@link Project} a page is about is up to useCurrentProject().
  * @param userId Whose Projects these are, or null when nobody is logged in.
  * @param projects All of the user's Projects, oldest first.
  * @param blueprints Each Project's {@link Blueprint}s by Project id.
  * @param error What went wrong while asking, or null.
  */
 function answerFor(userId, projects, blueprints, error) {
-    let project = null
-    if (projects.length > 0) {
-        project = projects[0]
-    }
     return {
         checked: true,
         userId: userId,
         projects: projects,
-        project: project,
         blueprints: blueprints,
         error: error,
+        lastVisitedId: null,
     }
 }

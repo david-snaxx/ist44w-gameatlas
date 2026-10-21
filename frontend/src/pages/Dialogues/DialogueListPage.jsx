@@ -1,6 +1,6 @@
 import { Download, Plus } from 'lucide-react'
 import { useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, useParams } from 'react-router'
 import Badge from '../../components/Badge/Badge.jsx'
 import Button from '../../components/Button/Button.jsx'
 import EmptyState from '../../components/EmptyState/EmptyState.jsx'
@@ -30,8 +30,9 @@ const COLUMNS = [
   { key: 'updated', label: 'Updated', render: (row) => formatDateTime(row.updated) },
 ]
 
-/** Every dialogue in a table (/dialogues). */
+/** Every dialogue in a table (/projects/:projectId/dialogues). */
 function DialogueListPage() {
+  const { projectId } = useParams()
   const dialogues = useDialogues()
   const blueprints = useBlueprints()
   const assets = useAssets()
@@ -74,12 +75,12 @@ function DialogueListPage() {
 
   function openDialogue(id) {
     const dialogue = dialogues.find((candidate) => candidate.id === id)
-    navigate(`/dialogues/${dialogue.key}`)
+    navigate(`/projects/${projectId}/dialogues/${dialogue.key}`)
   }
 
   // The same button appears in the header and in the empty state
   const newButton = (
-    <Button variant="primary" icon={Plus} onClick={() => navigate('/dialogues/new')}>
+    <Button variant="primary" icon={Plus} onClick={() => navigate(`/projects/${projectId}/dialogues/new`)}>
       New dialogue
     </Button>
   )
@@ -90,7 +91,7 @@ function DialogueListPage() {
       intro="Conversations between characters and the player, built as a tree of lines, player choices and actions."
       noun="dialogue"
       crumbs={[{ label: 'Dialogues' }]}
-      topBarActions={<TopBarActions noun="dialogue" newPath="/dialogues/new" importFile={parseDialogueFile} />}
+      topBarActions={<TopBarActions noun="dialogue" newPath={`/projects/${projectId}/dialogues/new`} importFile={parseDialogueFile} />}
       actions={
         <>
           <Button icon={Download} disabled={dialogues.length === 0} onClick={handleDownload}>

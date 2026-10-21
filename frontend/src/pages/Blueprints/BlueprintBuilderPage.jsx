@@ -60,11 +60,11 @@ const PREVIEW_TABS = [
 ]
 
 /**
- * Route component for /blueprints/new and /blueprints/:blueprintId. The `key` gives every blueprint a fresh
+ * Route component for /projects/:projectId/blueprints/new and .../blueprints/:blueprintId. The `key` gives every blueprint a fresh
  * BlueprintBuilder instead of reusing the previous one's state.
  */
 function BlueprintBuilderPage() {
-  const { blueprintId } = useParams()
+  const { projectId, blueprintId } = useParams()
   const location = useLocation()
   const saved = useBlueprint(blueprintId)
 
@@ -84,6 +84,7 @@ function BlueprintBuilderPage() {
   return (
     <BlueprintBuilder
       key={editorKey}
+      projectId={projectId}
       blueprintId={blueprintId}
       savedBlueprint={saved.blueprint}
       importedDefinition={state.imported}
@@ -98,7 +99,7 @@ function BlueprintBuilderPage() {
  * importedDefinition: a definition to start a new blueprint from (an imported file or a duplicate)
  * origin: 'file' (the default) | 'duplicate'; originName: the name of the blueprint that was duplicated
  */
-function BlueprintBuilder({ blueprintId, savedBlueprint, importedDefinition, origin, originName }) {
+function BlueprintBuilder({ projectId, blueprintId, savedBlueprint, importedDefinition, origin, originName }) {
   const isDuplicate = origin === 'duplicate'
   // An imported file's ID is kept as-is; a duplicate's ID keeps following its name
   const importedIdIsFixed = Boolean(importedDefinition?.id) && !isDuplicate
@@ -166,7 +167,7 @@ function BlueprintBuilder({ blueprintId, savedBlueprint, importedDefinition, ori
       <MissingRecord
         title="Blueprint not found"
         message={`There's no blueprint with the ID "${blueprintId}".`}
-        back={{ to: '/blueprints', label: 'All blueprints' }}
+        back={{ to: `/projects/${projectId}/blueprints`, label: 'All blueprints' }}
       />
     )
   }
@@ -328,7 +329,7 @@ function BlueprintBuilder({ blueprintId, savedBlueprint, importedDefinition, ori
     if (saved.id !== blueprintId) {
       // New blueprint, or its ID changed: move to its new address
       allowLeaving()
-      navigate(`/blueprints/${saved.id}`, { replace: true })
+      navigate(`/projects/${projectId}/blueprints/${saved.id}`, { replace: true })
     }
   }
 
@@ -354,7 +355,7 @@ function BlueprintBuilder({ blueprintId, savedBlueprint, importedDefinition, ori
     deleteAssetsOfBlueprint(baseline.id)
     allowLeaving()
     toast.show({ status: 'success', message: `Blueprint "${baseline.name}" deleted` })
-    navigate('/blueprints', { replace: true })
+    navigate(`/projects/${projectId}/blueprints`, { replace: true })
   }
 
   function handleExport() {
@@ -372,7 +373,7 @@ function BlueprintBuilder({ blueprintId, savedBlueprint, importedDefinition, ori
     for (const blueprint of blueprints) {
       existingIds.push(blueprint.id)
     }
-    navigate('/blueprints/new', { state: duplicateBlueprintState(baseline, existingIds) })
+    navigate(`/projects/${projectId}/blueprints/new`, { state: duplicateBlueprintState(baseline, existingIds) })
   }
 
   // ---------- Preview ----------
@@ -435,7 +436,7 @@ function BlueprintBuilder({ blueprintId, savedBlueprint, importedDefinition, ori
           variant="ghost"
           icon={LayoutList}
           title="View assets"
-          onClick={() => navigate(`/blueprints/${baseline.id}/assets`)}
+          onClick={() => navigate(`/projects/${projectId}/blueprints/${baseline.id}/assets`)}
         />
         <Button variant="ghost" icon={Copy} title="Duplicate blueprint" onClick={handleDuplicate} />
       </>
@@ -474,8 +475,8 @@ function BlueprintBuilder({ blueprintId, savedBlueprint, importedDefinition, ori
 
   return (
     <AppShell
-      actions={<TopBarActions noun="blueprint" newPath="/blueprints/new" importFile={parseBlueprintFile} />}
-      crumbs={[{ label: 'Blueprints', to: '/blueprints' }, { label: pageName }]}
+      actions={<TopBarActions noun="blueprint" newPath={`/projects/${projectId}/blueprints/new`} importFile={parseBlueprintFile} />}
+      crumbs={[{ label: 'Blueprints', to: `/projects/${projectId}/blueprints` }, { label: pageName }]}
       status={statusText(showAllErrors, problemCount, isDirty, draft.version)}
     >
       <div className="panes" style={{ '--panes': 'minmax(0, 1fr) minmax(360px, 0.85fr)' }}>
