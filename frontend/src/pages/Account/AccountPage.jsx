@@ -1,8 +1,17 @@
-import { Link } from 'react-router'
+import { Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router'
 import AppShell from '../../components/AppShell/AppShell.jsx'
+import Button from '../../components/Button/Button.jsx'
+import ConfirmDialog from '../../components/ConfirmDialog/ConfirmDialog.jsx'
 import EmptyState from '../../components/EmptyState/EmptyState.jsx'
+import PropertyRow from '../../components/form/PropertyRow.jsx'
+import TextInput from '../../components/form/TextInput.jsx'
 import Section from '../../components/Section/Section.jsx'
+import { useToast } from '../../components/Toast/useToast.js'
+import { clearCurrentUser } from '../../api/currentUserStore.js'
 import { useCurrentUser } from '../../api/useCurrentUser.js'
+import { deleteMe } from '../../api/users.js'
 import { formatDateTime } from '../../utils/formatDate.js'
 import { plural } from '../../utils/plural.js'
 
@@ -30,6 +39,7 @@ function AccountPage() {
         </header>
 
         <Section title="Your account">{content}</Section>
+        {currentUser.user && <DeleteAccount email={currentUser.user.email} />}
       </div>
     </AppShell>
   )
@@ -73,6 +83,80 @@ function ProjectIds({ ids }) {
       <p>{plural(ids.length, 'project')}</p>
       {lines}
     </div>
+  )
+}
+
+/** The danger section: the password again, then a confirmation, then the account is deleted on the server. */
+function DeleteAccount({ email }) {
+  const navigate = useNavigate()
+  const toast = useToast()
+  const [password, setPassword] = useState('')
+  // Shown under the password box when it's left empty
+  const [problem, setProblem] = useState(null)
+  const [confirming, setConfirming] = useState(false)
+  // True while the server is deleting, so the button can't send it twice
+  const [sending, setSending] = useState(false)
+
+  function handleSubmit(event) {
+    // Without this the browser reloads the page when the form is submitted
+    event.preventDefault()
+
+    if (password === '') {
+      setProblem('Enter your password')
+      return
+    }
+    setProblem(null)
+    setConfirming(true)
+  }
+
+  async function handleConfirm() {
+    setConfirming(false)
+    setSending(true)
+    const result = await deleteMe(password)
+    setSending(false)
+
+    if (result.error) {
+      // The server says things like "Wrong password"; an error toast stays until dismissed
+      toast.show({ status: 'error', message: result.error })
+      return
+    }
+
+    // The server already ended every session; this tells every open page that nobody is logged in
+    clearCurrentUser()
+    toast.show({ status: 'success', message: 'Account deleted' })
+    navigate('/login')
+  }
+
+  return (
+    <>
+      <Section title="Delete account">
+        <form className="stack" onSubmit={handleSubmit}>
+          <p className="small muted">
+            Deletes your account and logs you out in every browser. Projects only you are in are deleted with all
+            their blueprints, assets and dialogues; projects you share stay with the other members. This can't be
+            undone.
+          </p>
+          <PropertyRow label="Password" error={problem} help="Your password, to confirm it's you.">
+            <TextInput type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+          </PropertyRow>
+          <div className="row">
+            <Button type="submit" variant="danger" icon={Trash2} disabled={sending}>
+              Delete account
+            </Button>
+          </div>
+        </form>
+      </Section>
+
+      {confirming && (
+        <ConfirmDialog
+          title="Delete your account?"
+          message={`The account ${email} will be deleted, with every project only you are in. You'll be logged out in every browser. This can't be undone.`}
+          confirmLabel="Delete account"
+          onCancel={() => setConfirming(false)}
+          onConfirm={handleConfirm}
+        />
+      )}
+    </>
   )
 }
 

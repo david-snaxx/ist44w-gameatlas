@@ -425,8 +425,8 @@ status bar — just one centred column on an empty screen, over the usual backgr
 
 ### 7.17 Page pattern: the account page
 
-`pages/Account/`, at `/account`. A proof of concept: it shows every field the API sends for the logged-in
-user and nothing else, which is enough to see that the session cookie is reaching the backend.
+`pages/Account/`, at `/account`. It shows every field the API sends for the logged-in user, and lets them
+delete their account.
 
 - Inside `AppShell` like every other page, with one `Section` of label-and-value rows. The rows reuse the
   asset view's classes (`value-row`, `muted`, `value`), so it needs no styling of its own.
@@ -434,6 +434,13 @@ user and nothing else, which is enough to see that the session cookie is reachin
   `User` type that never appears, because the API never sends it.
 - Three states: *checking* while the server is being asked, the details once it answers, and an `EmptyState`
   pointing at `/login` when nobody is logged in.
+- **Delete account** is a second `Section`, shown only while someone is logged in: a muted note saying what
+  goes (the account, and projects only they are in, with everything in them; shared projects stay), a
+  **Password** box, and a danger "Delete account" button. It's a `<form>`, so Enter works too. An empty box gets
+  "Enter your password" under it and nothing is sent; otherwise a `ConfirmDialog` names the account's email.
+  Confirming calls `DELETE /api/users/me` and disables the button until the server answers. A refusal ("Wrong
+  password") is an error toast with nothing changed; success calls `clearCurrentUser()`, shows "Account
+  deleted" and goes to `/login`.
 
 **Who is logged in, in the sidebar.** The foot of `AppSidebar` shows the person's display name, leading here,
 with **Log out** underneath it; when nobody is logged in it offers "Log in" instead, and while the server is

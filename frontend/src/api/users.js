@@ -54,3 +54,31 @@ export function getMe() {
     const path = '/api/users/me'
     return sendRequest('GET', path)
 }
+
+/**
+ * Changes the logged-in {@link User}'s email and display name.
+ * The updated user's `data` comes back without the password hash. Fails with a 409 when the email is taken.
+ * @param email The new email to log in with.
+ * @param displayName The new name shown in the app.
+ */
+export function updateMe(email, displayName) {
+    const path = '/api/users/me'
+    const body = {
+        email: email,
+        displayName: displayName
+    }
+    return sendRequest('PUT', path, body)
+}
+
+/**
+ * Deletes the logged-in {@link User}'s account and logs them out in every browser.
+ * Projects nobody else is in are deleted with it. Fails with a 403 when the password is wrong.
+ * @param password The account's password, asked again to confirm.
+ */
+export function deleteMe(password) {
+    const path = '/api/users/me'
+    const body = {
+        password: password
+    }
+    return sendRequest('DELETE', path, body)
+}
