@@ -1,14 +1,17 @@
 import express from 'express';
 import type { Request, Response } from 'express';
-import type {ResultSetHeader, RowDataPacket} from 'mysql2';
+import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { db } from '../db.ts';
+import { withTransaction } from '../projectAccess.ts';
 
 // region Express Routing
 export const usersRouter = express.Router();
 usersRouter.get('/', getUserRoot);
 usersRouter.get('/me', getMe);
+usersRouter.put('/me', putMe);
+usersRouter.delete('/me', deleteMe);
 usersRouter.post('/login', postLogin);
 usersRouter.post('/logout', postLogout);
 usersRouter.get('/:id', getUser);
@@ -80,23 +83,14 @@ async function postUser(request: Request, response: Response) {
  */
 async function putUser(request: Request<{ id: string }>, response: Response) {
     const { email, displayName } = request.body ?? {};
-    if (!email || !displayName) {
-        return response.status(400).json({ message: 'email and displayName are required' });
-    }
-    if (typeof email !== 'string') {
-        return response.status(400).json({ message: 'email must be a string' });
-    }
-    const displayNameError = validateDisplayName(displayName);
-    if (displayNameError) {
-        return response.status(400).json({ message: displayNameError });
+    const detailsError = validateDetails(email, displayName);
+    if (detailsError) {
+        return response.status(400).json({ message: detailsError });
     }
 
-    // only the user's own details change here, projectIds is managed by the project routes
-    const updateQuery = `UPDATE users SET email = ?, display_name = ? WHERE id = ?`;
-    let affectedRows = 0;
+    let found = false;
     try {
-        const [result] = await db.query<ResultSetHeader>(updateQuery, [email, displayName.trim(), request.params.id]);
-        affectedRows = result.affectedRows;
+        found = await updateDetails(request.params.id, email, displayName);
     } catch (error) {
         if (isDuplicateEmail(error)) {
             return response.status(409).json({ message: 'That email is already registered' });
@@ -104,7 +98,7 @@ async function putUser(request: Request<{ id: string }>, response: Response) {
         throw error;
     }
 
-    if (affectedRows === 0) {
+    if (!found) {
         return response.status(404).json({ message: 'User not found' });
     }
     response.json(await getUserById(request.params.id));
@@ -139,6 +133,82 @@ async function getMe(request: Request, response: Response) {
         return response.status(401).json({ message: 'Log in first' });
     }
     response.json(user);
+}
+
+/**
+ * PUT /users/me
+ * Body: { email, displayName }. Changes only the logged-in user. 409 when the email is taken by another account.
+ */
+async function putMe(request: Request, response: Response) {
+    const userId = request.session.userId;
+    if (!userId) {
+        return response.status(401).json({ message: 'Log in first' });
+    }
+
+    const { email, displayName } = request.body ?? {};
+    const detailsError = validateDetails(email, displayName);
+    if (detailsError) {
+        return response.status(400).json({ message: detailsError });
+    }
+
+    let found = false;
+    try {
+        found = await updateDetails(userId, email, displayName);
+    } catch (error) {
+        if (isDuplicateEmail(error)) {
+            return response.status(409).json({ message: 'That email is already registered' });
+        }
+        throw error;
+    }
+
+    if (!found) {
+        // The account was deleted while this session was still open
+        return response.status(401).json({ message: 'Log in first' });
+    }
+    response.json(await getUserById(userId));
+}
+
+/**
+ * DELETE /users/me
+ * Body: { password }. Deletes the logged-in user's account, leaves their projects (deleting any left without
+ * members), and logs them out everywhere.
+ */
+async function deleteMe(request: Request, response: Response) {
+    const userId = request.session.userId;
+    if (!userId) {
+        return response.status(401).json({ message: 'Log in first' });
+    }
+
+    const { password } = request.body ?? {};
+    if (typeof password !== 'string') {
+        return response.status(400).json({ message: 'password must be a string' });
+    }
+
+    const selectQuery = `SELECT password_hash AS passwordHash FROM users WHERE id = ?`;
+    const [rows] = await db.query<RowDataPacket[]>(selectQuery, [userId]);
+    const row = rows[0];
+    if (!row) {
+        // The account was deleted while this session was still open
+        return response.status(401).json({ message: 'Log in first' });
+    }
+    const passwordMatches = await bcrypt.compare(password, row.passwordHash);
+    if (!passwordMatches) {
+        return response.status(403).json({ message: 'Wrong password' });
+    }
+
+    await withTransaction(async (connection) => {
+        const projectIds = await lockProjectIdsOfUser(connection, userId);
+        for (const projectId of projectIds) {
+            await leaveProject(connection, projectId, userId);
+        }
+        await connection.query(`DELETE FROM users WHERE id = ?`, [userId]);
+        await deleteSessionsOfUser(connection, userId);
+    });
+
+    // The row is gone already; this drops express-session's copy, so nothing saves it again
+    await destroySession(request);
+    response.clearCookie(SESSION_COOKIE_NAME);
+    response.status(204).end();
 }
 
 /**
@@ -247,6 +317,27 @@ function validateDisplayName(displayName: unknown): string | null {
     return null;
 }
 
+/** What's wrong with the email and display name sent to a PUT, or null when both are fine. */
+function validateDetails(email: unknown, displayName: unknown): string | null {
+    if (!email || !displayName) {
+        return 'email and displayName are required';
+    }
+    if (typeof email !== 'string') {
+        return 'email must be a string';
+    }
+    return validateDisplayName(displayName);
+}
+
+/**
+ * Saves a user's email and display name; false when there's no such user. Throws MySQL's ER_DUP_ENTRY when the
+ * email is taken. projectIds never changes here: the project routes manage it.
+ */
+async function updateDetails(userId: string, email: string, displayName: string): Promise<boolean> {
+    const updateQuery = `UPDATE users SET email = ?, display_name = ? WHERE id = ?`;
+    const [result] = await db.query<ResultSetHeader>(updateQuery, [email, displayName.trim(), userId]);
+    return result.affectedRows > 0;
+}
+
 /** True when MySQL refused a write because the UNIQUE index on users.email already has this email. */
 function isDuplicateEmail(error: unknown): boolean {
     if (!(error instanceof Error) || !('code' in error)) {
@@ -263,5 +354,54 @@ async function getUserById(id: string) {
     const selectQuery = `SELECT ${PUBLIC_COLUMNS} FROM users WHERE id = ?`;
     const [rows] = await db.query<RowDataPacket[]>(selectQuery, [id]);
     return rows[0];
+}
+
+/**
+ * A user's project IDs, read with the user's row locked until the caller's transaction ends, so a project can't be
+ * added to the list meanwhile. Empty when there's no such user.
+ */
+async function lockProjectIdsOfUser(connection: PoolConnection, userId: string): Promise<string[]> {
+    const selectQuery = `SELECT project_ids AS projectIds FROM users WHERE id = ? FOR UPDATE`;
+    const [rows] = await connection.query<RowDataPacket[]>(selectQuery, [userId]);
+    const row = rows[0];
+    if (!row) {
+        return [];
+    }
+    return row.projectIds as string[];
+}
+
+/**
+ * Takes a user out of a project's members, in the caller's transaction. A project left with no members is deleted,
+ * and its blueprints, assets and dialogues go with it through their foreign keys.
+ */
+async function leaveProject(connection: PoolConnection, projectId: string, userId: string): Promise<void> {
+    // FOR UPDATE: two members leaving at the same moment each wait for the other, so neither keeps the other in the list
+    const selectQuery = `SELECT member_user_ids AS memberUserIds FROM projects WHERE id = ? FOR UPDATE`;
+    const [rows] = await connection.query<RowDataPacket[]>(selectQuery, [projectId]);
+    const row = rows[0];
+    if (!row) {
+        return;
+    }
+
+    const kept: string[] = [];
+    for (const memberId of row.memberUserIds as string[]) {
+        if (memberId !== userId) {
+            kept.push(memberId);
+        }
+    }
+
+    if (kept.length === 0) {
+        await connection.query(`DELETE FROM projects WHERE id = ?`, [projectId]);
+        return;
+    }
+    const updateQuery = `UPDATE projects SET member_user_ids = ? WHERE id = ?`;
+    await connection.query(updateQuery, [JSON.stringify(kept), projectId]);
+}
+
+/** Ends every login session a user has, in any browser, in the caller's transaction. */
+async function deleteSessionsOfUser(connection: PoolConnection, userId: string): Promise<void> {
+    // `data` is the whole session saved as JSON text, so the user's ID sits inside it
+    const deleteQuery = `DELETE FROM sessions WHERE JSON_UNQUOTE(JSON_EXTRACT(data, '$.userId')) = ?`;
+    await connection.query(deleteQuery, [userId]);
 }
 // endregion

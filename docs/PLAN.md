@@ -12,8 +12,8 @@
 | **Start** | 2026-08-24 |
 | **Hard deadline** | 2026-12-01 |
 | **Plan written** | 2026-09-14 |
-| **Last revised** | 2026-09-17 — pivoted to targeting **Unity** explicitly (see [§1](#1-what-gameatlas-is-the-one-paragraph-version), [§5.7](#57-unity-output-layer-phase-5), Phase 5) |
-| **Engine target** | Unity 6 LTS |
+| **Last revised** | 2026-10-18 — Unity integration (Phase 5) moved to future work, so the first version is Phases 1–4 plus Phase 6 (see [§7](#7-phased-roadmap), [§11](#11-decision-log)) |
+| **Engine target** | Unity: the export is shaped for it; the Unity tooling (C# generation, importer, dialogue runtime) is future work ([§5.7](#57-unity-output-layer-future-work)) |
 | **Budgeted effort** | ~5 hrs/week (Brief estimate). This is tight, see [Risks](#10-risks--mitigations) |
 
 ---
@@ -24,19 +24,24 @@ GameAtlas is a web app where **non-technical members of a Unity game team** (wri
 **engine-ready game data** (items, entities, dialogue trees) through friendly forms and a node-graph editor
 instead of hand-editing raw JSON or clicking through Unity's Inspector. Programmers define (or help define)
 **blueprints** (schemas). Everyone else fills in **assets** (documents) that must conform to them. Everything
-lives on one shared server, so the team has a **single source of truth** — and GameAtlas turns that data into
-**C# classes, ScriptableObject assets and a dialogue runtime** that drop straight into a Unity project.
+lives on one shared server, so the team has a **single source of truth**, and the JSON it exports is shaped for
+Unity: an asset file loads with Unity's own `JsonUtility` into a plain `[Serializable]` class (vectors arrive as
+`Vector2`/`Vector3` with no converter). Generating those classes, ScriptableObject assets and a dialogue runtime
+from the same data is the planned next step, after the first version ([§5.7](#57-unity-output-layer-future-work)).
 
 ### Why Unity specifically (decision of 2026-09-17)
 
 GameAtlas used to be pitched as engine-agnostic. It now **targets Unity explicitly**. Naming the engine is what
 makes the last mile possible: a generic tool can only hand you a JSON file and wish you luck, while a Unity-targeted
-tool can generate the C# data classes, build the `.asset` files, and ship a runtime that plays the dialogue back.
-That turns "a nicer JSON editor" into a pipeline.
+tool can shape its export for the engine and, later, generate the C# data classes, build the `.asset` files, and
+ship a runtime that plays the dialogue back. That turns "a nicer JSON editor" into a pipeline.
 
 The trade is narrower reach for a finishable product and a sharper story. It also gives usability testing
 (Phase 6) a population that can actually be recruited: "Unity developers" is a group you can find, "game
 developers in general" is not a sampling frame.
+
+The Unity tooling itself (Phase 5) was moved to future work on 2026-10-18 so the first version can be finished
+in time (§11). The pitch stays Unity-first; the first version delivers the data side of the pipeline.
 
 ### The gap it fills
 | Tool | Good at | Missing |
@@ -47,15 +52,15 @@ developers in general" is not a sampling frame.
 | **Yarn Spinner** | Text-first dialogue, playthrough testing | Custom syntax to learn; can't import schemas |
 
 **GameAtlas's differentiator:** one app that covers **flat** (form), **hierarchical** (nested form), and
-**branching** (graph) data, with **references between them**, and that **emits Unity C# and ScriptableObjects
-from the same definitions**. For example, a dialogue node's `speaker` points to an `Entity` document, and a
-choice can `give` an `Item` document. That removes "app-hopping", the errors from re-typing data in several
-tools, and the hand-written `[Serializable]` class that normally sits between the data and the game.
+**branching** (graph) data, with **references between them**, and that **exports it in a shape Unity reads
+directly**. For example, a dialogue node's `speaker` points to an `Entity` document, and a choice can `give` an
+`Item` document. That removes "app-hopping" and the errors from re-typing data in several tools. Generating the
+hand-written `[Serializable]` class that normally sits between the data and the game is future work (§5.7).
 
 ### Who it's for (priority order)
 1. **Writers / Designers / Artists on a Unity team.** Primary users. Every UI decision should favor them. Assume **zero programming knowledge** — including zero Unity knowledge. They should never need to open the editor.
 2. **Testing users.** They validate usability. Metrics: task speed and perceived reliability.
-3. **Unity programmers.** They care about **correct, predictable JSON**, **C# that compiles**, and a stable contract — not the UI. They are the ones who install the package and wire the data into the game.
+3. **Unity programmers.** They care about **correct, predictable JSON** and a stable contract — not the UI. They are the ones who load the exported files into the game.
 
 ---
 
@@ -71,10 +76,11 @@ tools, and the hand-written `[Serializable]` class that normally sits between th
 4. **Export is a contract.** The downloaded JSON shape is what engine devs build against. Keep it clean
    (no editor-only data mixed in), documented, and stable.
 5. **Unity-first, engine-neutral core.** Targeting Unity changes the *outputs and the pitch*, not the *data model*.
-   Stored and exported JSON never mentions Unity, C#, or ScriptableObjects. Unity support is an **output layer**
+   Stored and exported JSON never mentions Unity, C#, or ScriptableObjects. Unity tooling is an **output layer**
    (§5.7) that reads blueprints and assets the same way any other consumer would. This keeps the contract clean,
-   keeps `toExport()` unchanged, leaves Godot/Unreal open as future work — and means that if the Unity package
-   slips, there is still a complete working app rather than a half-integrated one.
+   keeps `toExport()` unchanged, leaves Godot/Unreal open as future work — and means that without the Unity
+   package there is still a complete working app rather than a half-integrated one. That is the first version
+   since 2026-10-18: the output layer moved to future work.
 6. **MVP over polish.** Solo dev, fixed deadline. Get each phase working end-to-end before styling it.
 7. **Simple code over polish** (2026-09-23 and 24). The owner is learning React, so the code has to stay easy to
    read. That means no accessibility layer (no `aria-*`, roles, focus management or keyboard handlers), no
@@ -103,10 +109,8 @@ tools, and the hand-written `[Serializable]` class that normally sits between th
 | Backend tests | Node's built-in test runner (`node --test`), calling the app with `fetch` | Route tests only; the shared validation is covered by the frontend's Vitest suite. |
 | Local DB | Docker Compose MySQL container, or a native MySQL install | Docker isn't on PATH right now. |
 | Hosting (end) | Static frontend host + Node host + managed MySQL | Decide in Phase 6. Internet deployment is preferred. |
-| **Engine target** | **Unity 6 LTS**, C#, TextMeshPro | One LTS version, stated in the package README. Don't chase Unity releases mid-project. |
-| **Code generation** | Client-side string templates over the field-type registry | Runs in the browser, no backend needed, works offline. Each field type gains a `csharpType` and a literal/attribute hint (§5.7). |
-| **JSON inside Unity** | `JsonUtility` for the runtime path; `com.unity.nuget.newtonsoft-json` for the editor importer | `JsonUtility` can't parse top-level arrays, dictionaries, or string-valued enums. Newtonsoft is a first-party UPM package, so it's a safe dependency for editor-only code. |
-| **Unity package** | UPM package under `unity/`, installed by Git URL | Runtime (dialogue player + rich-text effects) and Editor (JSON → ScriptableObject importer) assemblies. |
+| **Engine target** | **Unity**, through the export shape | No Unity code in the first version. Asset files load with `JsonUtility`; it can't parse top-level arrays (the "Download all" files), dictionaries, or string-valued enums, so `export-format.md` should say how to read those. |
+| **Unity tooling** | Future work since 2026-10-18 (§5.7) | Would be Unity 6 LTS, C# and TextMeshPro: client-side C# generation over the field-type registry, and a UPM package under `unity/` (installed by Git URL) with the ScriptableObject importer (Newtonsoft) and the dialogue runtime. |
 
 **Swap-friendly notes:** Postgres (which you already know) could replace MySQL with almost no design change
 (`JSONB` instead of `JSON`). The Express API could be replaced by any REST backend without changing the frontend
@@ -126,7 +130,7 @@ gameatlas/
 │   ├── STYLE-GUIDE.md        # ✔ Filled-in style questionnaire (background only)
 │   ├── flow/                 # Capstone diagrams, one each, as of today's app: operational-flow.md ✔, functional-decomposition.md ✔, design-flow.md ✔ (older detailed versions in flow/archive/)
 │   ├── export-format.md      # (Phase 2+) Public JSON export contract for engine devs
-│   └── unity-integration.md  # (Phase 5) Install the package, generate C#, import assets, play dialogue
+│   └── unity-integration.md  # (future, §5.7) Install the package, generate C#, import assets, play dialogue
 ├── frontend/              # ✔ The Vite app (src/, index.html, package.json, vite.config.js, eslint.config.js)
 │   └── src/
 │       ├── styles/        # ✔ tokens.css (design tokens) + base.css (reset, utilities, one block per shared component)
@@ -136,7 +140,7 @@ gameatlas/
 │       ├── data/          # ✔ Assets and dialogues: stores (on the server since 2026-10-16), data ↔ form values, dialogue graph model, export/import
 │       ├── pages/         # ✔ Route-level screens: Blueprints (list + builder), Dashboard (home), Settings, Assets (browser + view + editor), Dialogues (list + tree editor), NotFound
 │       ├── utils/         # ✔ Small helpers (downloads, dates, plurals, unsaved-changes guard)
-│       ├── unity/         # (Phase 5) C# code generation: type mapping + templates (pure functions, no UI)
+│       ├── unity/         # (future, §5.7) C# code generation: type mapping + templates (pure functions, no UI)
 │       └── api/           # ✔ fetch wrappers for the REST API (sendRequest + one file per resource), and the current user and project stores
 ├── backend/               # ✔ Express API in TypeScript (package.json, tsconfig.json, .env.example)
 │   ├── migrations/        # (Phase 2) Numbered .sql files: users, projects, schemas, documents, dialogues
@@ -145,9 +149,9 @@ gameatlas/
 │       ├── app.ts         # ✔ Express app: JSON bodies, /api routers, JSON 404 and 500
 │       ├── config.ts      # ✔ Every setting from .env, with local defaults
 │       ├── db.ts          # ✔ mysql2 connection pool
-│       ├── routes/        # ✔ One router per resource: health (✔), users (✔ sign-up, login, logout, /me), projects, schemas, documents, dialogues
+│       ├── routes/        # ✔ One router per resource: health (✔), users (✔ sign-up, login, logout, /me read, update and delete), projects, schemas, documents, dialogues
 │       └── types/         # ✔ TypeScript interfaces: Blueprint, Asset, Dialogue and their files, Backup, Project, User, session.d.ts
-├── unity/                 # (Phase 5) UPM package, installed into a Unity project by Git URL
+├── unity/                 # (future, §5.7) UPM package, installed into a Unity project by Git URL
 │   └── com.gameatlas.core/
 │       ├── package.json
 │       ├── Runtime/       # Dialogue player, effect tag parser, TMP effect renderer
@@ -160,8 +164,8 @@ gameatlas/
 only the docs, `CLAUDE.md` and `.claude/` sit at the root. The backend imports the frontend's validation modules
 by relative path (`../../frontend/src/schema/validation.js`); there is no separate shared package.
 
-`unity/` holds a **Unity package, not a Unity project**. Keep a throwaway test project outside this repo (or
-gitignored) and add the package to it by local path while developing.
+When it's built, `unity/` holds a **Unity package, not a Unity project**. Keep a throwaway test project outside
+this repo (or gitignored) and add the package to it by local path while developing.
 
 ---
 
@@ -233,8 +237,8 @@ Adding a type then means adding one entry, with no changes to the renderer. The 
 `PropertyRow`, which already handles the label, required marker, help text and error message.
 
 > **Resolved 2026-09-17:** the vector export shape stays `{"x":…,"y":…,"z":…}`. That is exactly how Unity's
-> `JsonUtility` serializes `Vector2`/`Vector3`, so a generated `public Vector3 gripOffset;` field deserializes
-> with no converter and no custom code. `[x,y,z]` would have needed one.
+> `JsonUtility` serializes `Vector2`/`Vector3`, so a `public Vector3 gripOffset;` field (hand-written now,
+> generated once §5.7 exists) deserializes with no converter and no custom code. `[x,y,z]` would have needed one.
 >
 > When `color` is built, note that Unity's `Color` is four **floats 0–1** (`{r,g,b,a}`), not `#RRGGBB`. Either
 > export `{r,g,b,a}` to match, or generate a `string` field plus a parse helper. Decide it then and log it.
@@ -349,7 +353,10 @@ Blueprint IDs like `item` are now only unique per project, so blueprint rows get
 Storing data as JSON avoids one table per schema and avoids an entity-attribute-value (EAV) design. The
 backend validates `data` against the schema's `definition` on every write. **Never trust the frontend alone.**
 
-### 5.7 Unity output layer (Phase 5)
+### 5.7 Unity output layer (future work)
+
+> **Not in the first version** (2026-10-18, §11). This was Phase 5. Nothing built depends on it, and the design
+> below is kept for whoever picks it up.
 
 Three pieces, each independently useful and each shippable on its own. Build them in this order so that
 cutting the last one still leaves something demoable.
@@ -419,7 +426,11 @@ of its own state. Plus the effect tag renderer (§5.8).
 Generation is **client-side**. A `GET /api/schemas/{id}/csharp` endpoint is possible later but buys nothing now,
 and generating in the browser keeps the feature working before the backend exists.
 
-### 5.8 Dialogue text effect tags (Phase 5)
+### 5.8 Dialogue text effect tags (future work)
+
+> **Not in the first version** (2026-10-18), together with §5.7. Until then, dialogue text is a plain string:
+> GameAtlas neither checks nor previews tags, and exports whatever the writer typed. TextMeshPro's own `<b>`, `<i>`
+> and `<color=…>` still work when a game shows the text in TMP, since they need no runtime of ours.
 
 Line and response text may carry inline rich-text tags. They stay **inline in the `text` string** rather than
 being lifted into separate range data, because a tag's meaning is its position in the sentence — pulling them
@@ -528,7 +539,9 @@ someone else's account by changing an ID in the URL:
 | POST | `/api/users/login` | Log in (`{ email, password }`); sets the session cookie. 401 `Wrong email or password` |
 | POST | `/api/users/logout` | Log out; ends the session and clears the cookie |
 | GET | `/api/users/me` | The logged-in user, without the password hash. 401 when not logged in |
-| GET / PUT / DELETE | `/api/users/{id}` | For testing; become `/me` versions (PUT changes only email and display name; 409 when the email is taken) |
+| PUT | `/api/users/me` | Change the logged-in user's `{ email, displayName }` (nothing else). 401 `Log in first`, 409 when the email is taken |
+| DELETE | `/api/users/me` | Delete the logged-in user's account (`{ password }`). 401 `Log in first`, 400 when `password` isn't a string, 403 `Wrong password`. In one transaction it takes the user out of every project in their `projectIds`, deletes any project left with no members (its blueprints, assets and dialogues go with it), deletes the user, and ends all their sessions in every browser; then clears this browser's cookie and answers 204 |
+| GET / PUT / DELETE | `/api/users/{id}` | For testing; the frontend should use the `/me` versions. `DELETE /{id}` doesn't touch projects or sessions |
 | GET | `/api/users` | Testing only (shows every email); remove before deploying |
 
 Other errors (400, 401, 404, 409, 413, 500) answer `{ "message": "…" }`. A body over its route's size limit answers 413, and one that isn't JSON answers 400. `email` must be a string (400 otherwise). Sign-up rules: `password` is 8 characters or more and at most 72 bytes (bcrypt
@@ -541,7 +554,7 @@ Validation errors return `400` with field-level detail the form can show inline:
 { "errors": [ { "path": "stats.damage", "message": "Must be ≥ 0" } ] }
 ```
 
-**C# generation is deliberately not an endpoint.** It runs in the browser from data the frontend already has
+**C# generation (future work, §5.7) is deliberately not an endpoint.** It runs in the browser from data the frontend already has
 (§5.7), so it works before the backend exists and keeps working offline. `GET /api/schemas/{id}/csharp` is an
 easy addition later if a build pipeline ever needs to fetch generated source directly.
 
@@ -559,6 +572,11 @@ Dates assume the 12/1 deadline and are targets. Each phase ends with a **demoabl
 > items that are really "swap localStorage for the API", which now fold into Phase 2. That freed the calendar for
 > the Unity work, which becomes **Phase 5 (Ga.5)**; hardening and deployment move to **Phase 6**. Ga.1–Ga.4 keep
 > their Project Brief numbering, so the course deliverables still line up.
+
+> **Re-planned 2026-10-18.** Phase 5 (Unity integration) moved to future work, so the first version is Phases 1–4
+> plus Phase 6. Phase 6 now starts as Phase 2 ends, and its dates follow the Gantt chart of 2026-10-18: the remaining
+> features, documentation and tests by 10/31, then usability testing, deployment and the final write-up by 11/16,
+> leaving the rest of November as buffer.
 
 ### Phase 0: Setup (Week of 9/14)
 - [x] `git init` (branch `main`)
@@ -623,48 +641,51 @@ Goal: branching dialogue data in the same app, using the same storage and export
 - [x] Import dialogue files (laid out automatically in columns from Start) and "Download all" (`dialogues.json`)
 - **Done when:** a writer builds a branching conversation whose speaker is an Entity document, saves it, reopens it with the layout intact, and exports clean JSON.
 
-### Phase 5: Unity integration (10/19 → 11/15) · Deliverable **Ga.5**
+### Phase 5: Unity integration · Deliverable Ga.5 — moved to future work (2026-10-18)
 Goal: data authored in GameAtlas reaches a running Unity game without anyone hand-writing a data class.
 
-> **Not in Project Brief v0.3.** This phase comes from the 2026-09-17 decision to target Unity explicitly.
-> It is ordered by risk: (a) is pure frontend, (b) needs Unity but is editor-only, (c) is the largest and is
-> the first thing to cut. Each sub-goal is demoable on its own.
+> **Not in the first version.** Cut on 2026-10-18 so the first version can be finished in time (§11). It was never
+> in Project Brief v0.3, so no course deliverable is lost, and because the data model and export stay
+> engine-neutral (§2.5), nothing in the other phases depends on it. The plan below is kept for later, as plain
+> bullets rather than checkboxes so it doesn't read as open work. It is ordered by risk: (a) is pure frontend,
+> (b) needs Unity but is editor-only, (c) is the largest. Each sub-goal is demoable on its own.
 
 **(a) C# generation — frontend only, no Unity required**
-- [ ] Add C# mapping to the field-type registry (`csharpType`, attribute hints, enum handling — §5.7)
-- [ ] `frontend/src/unity/` generator: pure functions, blueprint → `.cs` source string (nested classes for `object`, `List<T>` for `list`, generated `enum` types)
-- [ ] "Generate C#" on the blueprint page: preview tab next to the blueprint file tab, and download `.cs`
-- [ ] "Download all scripts" across blueprints, plus the generated dialogue model classes
-- [ ] Tests: generated source is stable for the starter blueprints (snapshot); round-trip a record through the documented shape
+- Add C# mapping to the field-type registry (`csharpType`, attribute hints, enum handling — §5.7)
+- `frontend/src/unity/` generator: pure functions, blueprint → `.cs` source string (nested classes for `object`, `List<T>` for `list`, generated `enum` types)
+- "Generate C#" on the blueprint page: preview tab next to the blueprint file tab, and download `.cs`
+- "Download all scripts" across blueprints, plus the generated dialogue model classes
+- Tests: generated source is stable for the starter blueprints (snapshot); round-trip a record through the documented shape
 
 **(b) Unity package + ScriptableObject importer**
-- [ ] UPM package skeleton `unity/com.gameatlas.core` (Runtime + Editor assembly definitions, Newtonsoft dependency)
-- [ ] Editor importer: exported `assets.json` → one ScriptableObject `.asset` per record, updating existing assets by ID rather than duplicating them
-- [ ] Reference fields resolve to the referenced asset where possible, and report unresolved IDs instead of failing silently
-- [ ] `docs/unity-integration.md`: install by Git URL, generate, import, use
+- UPM package skeleton `unity/com.gameatlas.core` (Runtime + Editor assembly definitions, Newtonsoft dependency)
+- Editor importer: exported `assets.json` → one ScriptableObject `.asset` per record, updating existing assets by ID rather than duplicating them
+- Reference fields resolve to the referenced asset where possible, and report unresolved IDs instead of failing silently
+- `docs/unity-integration.md`: install by Git URL, generate, import, use
 
 **(c) Dialogue runtime and effect tags**
-- [ ] Effect tag syntax, validation and inline errors in the dialogue editor (§5.8) — **frontend only; ships regardless of the rest of this phase**
-- [ ] Animated live preview of a line in the editor
-- [ ] `DialoguePlayer`: walk nodes from `startNode`, events for lines/choices, callbacks for flag checks and item grants
-- [ ] TMP effect renderer: parse and strip GameAtlas tags, map to character indices after `ForceMeshUpdate`, animate vertices for `wave`/`shake`; honor `speed` and `pause` in the typewriter
-- [ ] Sample scene in the package showing a full conversation
+- Effect tag syntax, validation and inline errors in the dialogue editor (§5.8) — frontend only, so it could ship on its own
+- Animated live preview of a line in the editor
+- `DialoguePlayer`: walk nodes from `startNode`, events for lines/choices, callbacks for flag checks and item grants
+- TMP effect renderer: parse and strip GameAtlas tags, map to character indices after `ForceMeshUpdate`, animate vertices for `wave`/`shake`; honor `speed` and `pause` in the typewriter
+- Sample scene in the package showing a full conversation
 
 - **Done when:** a user builds a blueprint in the browser, fills in assets and a dialogue, downloads the JSON and
   the generated C#, drops both into a fresh Unity project with the package installed, and plays the conversation —
   writing no data classes and no parsing code.
 
-### Phase 6: Hardening, usability testing, deployment (11/16 → 12/1)
-> Thanksgiving is 11/26. Treat this week as reduced capacity.
+### Phase 6: Hardening, usability testing, deployment (10/19 → 11/16, buffer to 12/1)
+> Starts as Phase 2 ends (re-planned 2026-10-18). Thanksgiving is 11/26, inside the buffer.
 - [ ] Usability sessions with testing users (see §8) — recruit **Unity developers and the writers/artists who work with them**
 - [ ] Fix the top issues found; minimum-viable visual polish
 - [ ] Deploy (frontend static host + backend + managed MySQL); environment config via env vars, including `SESSION_SECRET` and `secure` cookies over HTTPS (✔ the MySQL session store, 2026-10-14); remove `GET /api/users`
 - [ ] Final README, demo script, capstone documentation updates
 
 ### Stretch / future (explicitly out of scope unless ahead of schedule)
-XML export · JSON Schema generation · bulk export per schema/project · roles and permissions inside a project ·
-real-time collaboration · user-defined graph shapes · dialogue "playthrough" preview (like Yarn Spinner) ·
-**Godot / Unreal output layers** · an in-Unity browser window (UIToolkit) that pulls from the API directly ·
+**Unity integration (Phase 5, §5.7–5.8): C# generation, the ScriptableObject importer, the dialogue runtime and
+text effect tags** · XML export · JSON Schema generation · bulk export per schema/project · roles and permissions
+inside a project · real-time collaboration · user-defined graph shapes · dialogue "playthrough" preview (like Yarn
+Spinner) · **Godot / Unreal output layers** · an in-Unity browser window (UIToolkit) that pulls from the API directly ·
 publishing the package to the Asset Store or OpenUPM · pre-parsed effect ranges in the export ·
 Electron desktop build · undo/redo · document version history.
 
@@ -679,7 +700,7 @@ Electron desktop build · undo/redo · document version history.
 - Server rejects invalid documents even if the frontend is bypassed
 - Import → export round-trips without data loss
 
-**Unity integration (Phase 5):**
+**Unity integration (future work, §5.7), not measured in the first version.** If it's built, these are the checks:
 - Generated C# **compiles in a fresh Unity 6 project with zero errors and zero warnings** for every starter blueprint
 - Exported JSON → importer → ScriptableObjects → read back in play mode gives the same values that were typed into the form (the round-trip test that matters most)
 - A dialogue with every node type plays to an End node without exceptions
@@ -690,12 +711,12 @@ Electron desktop build · undo/redo · document version history.
 - Count of errors or invalid files produced (target: 0 invalid exports)
 - Short post-test survey: System Usability Scale (SUS) + "How confident are you the file is correct?" (1–5)
 - **Primary success bar:** a participant with no programming experience completes core tasks without help.
-- **Unity-specific comparison:** time to get 5 items into a Unity project via GameAtlas vs. authoring ScriptableObjects by hand in the Inspector. This is the headline number for the capstone writeup, and it is the comparison the Unity pivot exists to make.
+- **Headline comparison:** time and errors for "Create 5 Item documents" in GameAtlas vs. hand-editing the same JSON in a text editor. Comparing against authoring ScriptableObjects in Unity's Inspector needs the importer, so it moves to future work with §5.7.
 
 ---
 
 ## 9. Suggested weekly rhythm (~5 hrs)
-- ~1 hr: learning (React docs, React Flow examples; from Phase 5, Unity scripting and TextMeshPro) *targeted at this week's task*
+- ~1 hr: learning (React docs, React Flow examples, Express and MySQL) *targeted at this week's task*
 - ~3 hrs: build one vertical slice
 - ~1 hr: tests, commit, update checklist in this file, note any decisions in the log
 
@@ -718,11 +739,9 @@ React concepts. Keep architectural decisions in this document.
 | Backend tooling is very new: TypeScript 7 (native compiler) and Node's type stripping | An unexpected tool bug costs a day | Only `tsc` checks types and nothing is compiled, so falling back to TypeScript 6 (`npm install -D typescript@6`) changes nothing at runtime |
 | Glass/glow styling hurts readability as colors get tuned | Text gets hard to read | Check readability over the brightest glow whenever glass or glow tokens change (STYLE-GUIDELINES §5.6) |
 | No accessibility layer (decision of 2026-09-23) | Keyboard-only or screen-reader users struggle; an accessibility review would fail | Native elements (`<button>`, `<select>`, checkbox, `<dialog>`) keep basic keyboard use working. Revisit only if Phase 6 testing or the course requires it, and log the change here |
-| Phase 5 adds a **third codebase in a third language** (C#/Unity) with its own toolchain | Phase 5 slips and takes Phase 6 with it | Phase 5 is layered by risk: (a) generation is frontend-only, (b) the importer is editor-only, (c) the runtime is last and is the designated cut. Any one of them alone is a demo. |
-| TMP character-index mapping for effect tags | Effects render on the wrong characters or throw | Small fixed effect set; strip GameAtlas tags *before* TMP, map indices *after* `ForceMeshUpdate`; if it fights back, ship color/bold only and document the rest as future work |
-| Unity version churn | Package breaks on a version bump | Target one LTS (Unity 6), state it in the package README, don't upgrade mid-project |
-| Targeting Unity narrows the market claim in the capstone writeup | Weaker "general tool" framing | Frame it as the honest trade it is: the core is engine-neutral (§2.5) and Unity is the first supported target, chosen because it makes the last mile real. Depth beats breadth in a capstone. |
-| Unity work crowds out tests, which still don't exist | Ga.1–Ga.4 regress silently while attention is on C# | Write the Vitest suite during Phase 2, before Phase 5 starts — not after |
+| The Unity pitch promises more than the first version does (Phase 5 moved to future work on 2026-10-18) | The capstone writeup reads as unfinished | Frame it as the data half of the pipeline: the export is shaped for Unity (asset files load with `JsonUtility`, vectors match `Vector3`), and §5.7 is the documented next step. Depth beats breadth in a capstone. |
+| Targeting Unity narrows the market claim in the capstone writeup | Weaker "general tool" framing | Frame it as the honest trade it is: the core is engine-neutral (§2.5) and Unity is the first target, chosen because it makes the last mile real |
+| Tests still don't exist this late | Ga.1–Ga.4 regress silently during the last changes | The route tests and the Vitest round trip come first after Phase 2 (10/19–10/25 on the Gantt chart) |
 
 ---
 
@@ -795,6 +814,8 @@ Add new entries at the bottom. Format: `date · decision · why`.
 - 2026-10-16 · **Dialogues are saved on the server**, completing the move off localStorage: `frontend/src/api/dialogues.js`, `data/dialogueStore.js` (in memory, waiting for the server on every save and delete), `useDialogue(key)`, and an editor that awaits its saves and deletes and shows the server's answer in a toast · User request, the last of the three stores (CLAUDE.md's template). Things the graph editor needed: (1) the editor waits for the project's dialogues as well as its blueprints, now that both need a login; (2) its unsaved-changes check compares JSON snapshots, and MySQL returns the keys inside each node in a different order, so Discard takes a fresh snapshot of the saved copy it restores (otherwise a Discard right after a save would still say "Unsaved changes"); (3) the editor's name is trimmed before saving, as the server does. Renaming an asset or a blueprint already moves the dialogues on the server, so the asset editor no longer rewrites dialogues itself: it counts them for its message and calls `moveAssetLinks()`, which, like `retargetDialogueBlueprint()` after a blueprint rename, only brings the copy in memory in line. Every data page now needs a login. Dialogues saved in this browser before the switch (`gameatlas.dialogues.v1`) are no longer read but are left in place. A dialogue body counts toward `express.json()`'s 100 KB limit like any other save, which only a very large tree (a few hundred nodes) would reach.
 - 2026-10-17 · **The backend watches only its own code, and `src/config.ts` loads `backend/.env` itself** (`process.loadEnvFile()`) instead of through Node's `--env-file-if-exists` flag. `npm run dev` and the `backend` launch config watch `backend/src` plus `frontend/src/schema`, `data` and `utils`, the only frontend folders the backend imports from · The dev server kept restarting by itself, which cut off requests in the middle. Tested in a scratch folder: this machine keeps Windows' "last accessed" times, and Node's watcher reports a file merely being read as a change. Plain `--watch` therefore restarted when the backend first loaded a module it hadn't read for a while (e.g. on the first database query). `--watch-path` alone would have fixed that, but `--env-file` makes Node also watch the env file's folder (all of `backend/`, `node_modules` included) with nothing filtered out, so any read there still restarted it. Also fixed: the `dev` script had `---watch-path` (three dashes), which Node refuses to start with. What's left: `.env` edits need a manual restart, reading a watched file nobody has opened for about an hour can still cause one restart, and a backend import from another frontend folder must be added to both watch lists.
 - 2026-10-17 · **Comments trimmed across the frontend and backend** (about 2,190 comment lines down to about 1,730; no code changed, checked token by token against a snapshot). Long file headers, comments narrating the next lines, and history in comments went; each function, component and type field keeps one short doc comment, plus one-line notes on gotchas and non-obvious React patterns. The rule is in CLAUDE.md · User request: the comments had grown into explanations of what the code was doing, much of it written while the code was being changed, which made the code harder to read rather than easier.
+- 2026-10-18 · **Unity integration (Phase 5, Ga.5) moved to future work.** The first version is Phases 1–4 plus Phase 6, which now runs 10/19 → 11/16 with the rest of November as buffer (§7, following the Gantt chart of 2026-10-18). GameAtlas is still pitched at Unity teams: the export is already shaped for Unity, since asset files load with `JsonUtility` and vectors are `{x,y,z}` like `Vector3`. §5.7 and §5.8 keep the design of C# generation, the ScriptableObject importer, the dialogue runtime and the effect tags for later. Dialogue text stays a plain string meanwhile: nothing checks or previews tags, and TextMeshPro's own `<b>`, `<i>` and `<color=…>` still work when a game shows the text in TMP. §8's headline comparison becomes GameAtlas vs. hand-editing JSON, because the comparison with Unity's Inspector needs the importer · User decision, to have a near-complete first version within one to two weeks. Phase 5 was a third codebase in a third language and the riskiest phase left. It was never in Project Brief v0.3, so no course deliverable is lost, and §2.5 kept the data model and export engine-neutral precisely so that the app would be complete without it.
+- 2026-10-21 · **`PUT /api/users/me` and `DELETE /api/users/me`** join `GET /me`: they act on the user in the session, never on an ID from the URL, so nobody can change or delete someone else's account. The `/{id}` routes stay for testing, but the frontend should use the `/me` versions. Deleting an account needs the password again (403 `Wrong password`), and one transaction takes the user out of each project in their `projectIds`, deletes a project once it has no members left (its contents go through the foreign keys), deletes the user and deletes every row in `sessions` whose `data` holds their `userId`. Only the browser that asked gets its cookie cleared; the others still hold a cookie, but it points to a session that no longer exists, so they're logged out on their next request. Both the user's row and each project's row are read `FOR UPDATE`, the first use of §5.6 rule 1, so two members of a project deleting their accounts at once can't each leave the other behind in the member list · User request: security for the users routes.
 
 ---
 
@@ -806,5 +827,6 @@ Add new entries at the bottom. Format: `date · decision · why`.
 > **All three predate the Unity decision of 2026-09-17** and describe an engine-agnostic tool. This plan is the
 > current source of truth. When the capstone documents are revised, the parts that need rewriting are the problem
 > statement and target user (now Unity teams), the competitor analysis (add Unity's own ScriptableObject/Inspector
-> workflow as the incumbent), the success metrics (§8 now includes the Unity round-trip and the hand-authoring
-> time comparison), and the deliverable list (Ga.5 is new).
+> workflow as the incumbent), and the success metrics (§8). The deliverable list stays Ga.1–Ga.4 as in the brief:
+> Ga.5 (Unity integration) was added on 2026-09-17 and moved to future work on 2026-10-18, so at most it gets a
+> mention as the next step.
