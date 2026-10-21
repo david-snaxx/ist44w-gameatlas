@@ -3,13 +3,25 @@ import { useEffect, useRef } from 'react'
 import Button from '../Button/Button.jsx'
 
 /**
- * Modal confirmation for destructive actions only. Render it only while it should be open:
+ * Modal confirmation, mostly for destructive actions. Render it only while it should be open:
  *   {confirmDelete && <ConfirmDialog ... />}
  *
  * It uses the browser's own <dialog> element, which dims the page behind it and closes on Esc
- * (Esc calls onCancel).
+ * (Esc calls onCancel). Optional: `children` go under the message (e.g. a field to fill in, where Enter confirms),
+ * `confirmVariant` and `confirmIcon` change the confirm button from a red delete one, and `confirmDisabled` turns it
+ * off while a request is on its way.
  */
-function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCancel }) {
+function ConfirmDialog({
+  title,
+  message,
+  confirmLabel,
+  confirmVariant = 'danger',
+  confirmIcon = Trash2,
+  confirmDisabled = false,
+  onConfirm,
+  onCancel,
+  children,
+}) {
   const dialogRef = useRef(null)
 
   // A <dialog> starts hidden; showModal() opens it once it's on the page
@@ -19,16 +31,26 @@ function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCancel }) {
     return () => dialog.close()
   }, [])
 
+  // A form, so pressing Enter in a field inside confirms too
+  function handleSubmit(event) {
+    // Without this the browser reloads the page when the form is submitted
+    event.preventDefault()
+    onConfirm()
+  }
+
   return (
     <dialog ref={dialogRef} className="glass dialog" onCancel={onCancel}>
-      <h2>{title}</h2>
-      <p className="dialog-message">{message}</p>
-      <div className="dialog-actions">
-        <Button onClick={onCancel}>Cancel</Button>
-        <Button variant="danger" icon={Trash2} onClick={onConfirm}>
-          {confirmLabel}
-        </Button>
-      </div>
+      <form onSubmit={handleSubmit}>
+        <h2>{title}</h2>
+        <p className="dialog-message">{message}</p>
+        {children && <div className="dialog-fields">{children}</div>}
+        <div className="dialog-actions">
+          <Button onClick={onCancel}>Cancel</Button>
+          <Button type="submit" variant={confirmVariant} icon={confirmIcon} disabled={confirmDisabled}>
+            {confirmLabel}
+          </Button>
+        </div>
+      </form>
     </dialog>
   )
 }

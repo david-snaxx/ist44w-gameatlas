@@ -188,6 +188,16 @@ export function rememberProject(projectId) {
 }
 
 /**
+ * Adds a {@link Project} the user just made on the server. It's the newest, so it goes last, with no Blueprints yet.
+ * @param project The Project as the server answered it.
+ */
+export function addProject(project) {
+    const nextBlueprints = {...currentProject.blueprints}
+    nextBlueprints[project.id] = []
+    commit({...currentProject, projects: [...currentProject.projects, project], blueprints: nextBlueprints})
+}
+
+/**
  * Puts the server's copy of a {@link Project} in place of the old one, e.g. after renaming it.
  * @param project The Project as the server answered it.
  */

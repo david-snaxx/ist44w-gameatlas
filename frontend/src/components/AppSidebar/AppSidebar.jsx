@@ -1,18 +1,35 @@
-import { Box, Boxes, CircleUser, LayoutDashboard, LayoutList, LogIn, LogOut, MessagesSquare, Settings } from 'lucide-react'
+import {
+  Box,
+  Boxes,
+  CircleUser,
+  LayoutDashboard,
+  LayoutList,
+  LogIn,
+  LogOut,
+  MessagesSquare,
+  Plus,
+  Settings,
+} from 'lucide-react'
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
+import { addProject } from '../../api/currentProjectStore.js'
 import { clearCurrentUser } from '../../api/currentUserStore.js'
+import { createProject } from '../../api/projects.js'
 import { logOut } from '../../api/users.js'
 import { useCurrentProject } from '../../api/useCurrentProject.js'
 import { useCurrentUser } from '../../api/useCurrentUser.js'
+import ConfirmDialog from '../ConfirmDialog/ConfirmDialog.jsx'
+import PropertyRow from '../form/PropertyRow.jsx'
+import TextInput from '../form/TextInput.jsx'
 import { useToast } from '../Toast/useToast.js'
 
 // Projects whose section is folded. Kept outside the components so it survives moving between pages.
 const foldedProjectIds = new Set()
 
-/** The main navigation in every page's AppShell: Home, one foldable section per project, then General. */
+/** The main navigation in every page's AppShell: Home, one foldable section per project, New project, then General. */
 function AppSidebar() {
   const currentProject = useCurrentProject()
+  const currentUser = useCurrentUser()
   const { pathname } = useLocation()
 
   // Each link is a plain object: { label, icon, to }
@@ -30,6 +47,8 @@ function AppSidebar() {
     }
   }
   const activeTo = findActiveRoute(allLinks, pathname)
+  // Only once the user's projects are in, so the new one joins the list instead of racing it
+  const showNewProject = Boolean(currentUser.user) && currentProject.checked
 
   // <> ... </> is a "fragment": it groups several elements without adding a wrapper element to the page
   return (
@@ -41,6 +60,7 @@ function AppSidebar() {
         <ProjectSection key={section.project.id} section={section} activeTo={activeTo} pathname={pathname} />
       ))}
       {currentProject.error && <p className="nav-note">{currentProject.error}</p>}
+      {showNewProject && <NewProjectButton />}
       <SidebarGroup title="General" links={generalLinks} activeTo={activeTo} />
       <AccountLink />
     </>
@@ -118,6 +138,74 @@ function AccountLink() {
         <span className="truncate">{currentUser.user.displayName}</span>
       </Link>
       <LogOutButton />
+    </nav>
+  )
+}
+
+/**
+ * Asks for a name in a dialog, then makes a new, empty project. It appears in the sidebar once the server has made
+ * it, without leaving the page.
+ */
+function NewProjectButton() {
+  const toast = useToast()
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState('')
+  // Shown under the name box when it's left empty
+  const [problem, setProblem] = useState(null)
+  // True while the server is making the project, so it can't be sent twice
+  const [sending, setSending] = useState(false)
+
+  function handleOpen() {
+    setName('')
+    setProblem(null)
+    setOpen(true)
+  }
+
+  async function handleCreate() {
+    const trimmed = name.trim()
+    if (trimmed === '') {
+      setProblem('Enter a name')
+      return
+    }
+    setProblem(null)
+
+    setSending(true)
+    const result = await createProject(trimmed)
+    setSending(false)
+
+    if (result.error) {
+      // The server says what's wrong (e.g. a name that's too long); the dialog stays open to fix it
+      toast.show({ status: 'error', message: result.error })
+      return
+    }
+
+    addProject(result.data)
+    setOpen(false)
+    toast.show({ status: 'success', message: `Project "${result.data.name}" created` })
+  }
+
+  return (
+    <nav>
+      <button type="button" className="nav-item" onClick={handleOpen}>
+        <Plus size={16} />
+        <span className="truncate">New project</span>
+      </button>
+      {open && (
+        <ConfirmDialog
+          title="New project"
+          message="An empty project with you as its only member. You can add others in its settings."
+          confirmLabel="Create project"
+          confirmVariant="primary"
+          confirmIcon={Plus}
+          confirmDisabled={sending}
+          onConfirm={handleCreate}
+          onCancel={() => setOpen(false)}
+        >
+          <PropertyRow label="Name" error={problem}>
+            <TextInput value={name} onChange={(event) => setName(event.target.value)} />
+          </PropertyRow>
+        </ConfirmDialog>
+      )}
     </nav>
   )
 }

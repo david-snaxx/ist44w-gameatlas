@@ -993,7 +993,9 @@ body::before {
 
 /* ============================================================ ConfirmDialog (the browser's own <dialog>) */
 
+/* A size container, so a property row inside puts its label on top */
 .dialog {
+  container-type: inline-size;
   width: 400px;
   padding: var(--space-5);
   border-radius: var(--radius-md);
@@ -1003,6 +1005,11 @@ body::before {
 .dialog-message {
   margin-top: var(--space-2);
   color: var(--color-text-muted);
+}
+
+/* Fields to fill in, under the message */
+.dialog-fields {
+  margin-top: var(--space-4);
 }
 
 .dialog-actions {
