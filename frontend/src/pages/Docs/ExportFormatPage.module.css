@@ -1,0 +1,82 @@
+/* Reading text is easier when lines don't run the full width of a wide screen */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  max-width: 960px;
+  padding: var(--space-5);
+}
+
+/* One topic inside a section, like "The file" or "Node types" */
+.part + .part {
+  margin-top: var(--space-5);
+}
+
+.partTitle {
+  margin-bottom: var(--space-2);
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+
+/* Explanations: paragraphs and lists with room between them */
+.prose {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+}
+
+.prose ul,
+.prose ol {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding-left: var(--space-5);
+}
+
+/* A plain reference table: no sorting or clicking, just rows under a header */
+.reference {
+  width: 100%;
+  margin-top: var(--space-2);
+  border-collapse: collapse;
+}
+
+.reference th,
+.reference td {
+  padding: var(--space-2) var(--space-3) var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.reference th {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+/* Long JSON values in a cell wrap instead of widening the table */
+.reference code {
+  overflow-wrap: anywhere;
+}
+
+/* File names stay on one line, so they never break mid-word */
+.reference code.fileName {
+  white-space: nowrap;
+}
+
+/* A short JSON example, such as one dialogue node */
+.code {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-3);
+  background: var(--color-bg-app);
+  border-radius: var(--radius-sm);
+  overflow: auto;
+}
+
+/* One dialogue node type: its name and what it does, then its example */
+.nodeType + .nodeType {
+  margin-top: var(--space-4);
+}

@@ -11,6 +11,7 @@ import BlueprintBuilderPage from './pages/Blueprints/BlueprintBuilderPage.jsx'
 import BlueprintListPage from './pages/Blueprints/BlueprintListPage.jsx'
 import DashboardPage from './pages/Dashboard/DashboardPage.jsx'
 import DialogueListPage from './pages/Dialogues/DialogueListPage.jsx'
+import ExportFormatPage from './pages/Docs/ExportFormatPage.jsx'
 import LoginPage from './pages/Login/LoginPage.jsx'
 import SignUpPage from './pages/Login/SignUpPage.jsx'
 import NotFoundPage from './pages/NotFound/NotFoundPage.jsx'
@@ -101,6 +102,8 @@ const router = createBrowserRouter([
   },
   { path: '/login', element: <LoginPage /> },
   { path: '/signup', element: <SignUpPage /> },
+  // Documentation needs no login, so a link to it can be shared with anyone
+  { path: '/docs/export-format', element: <ExportFormatPage /> },
   { path: '*', element: <NotFoundPage /> },
 ])
 

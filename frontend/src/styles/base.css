@@ -309,10 +309,17 @@ body::before {
   color: var(--color-text-muted);
 }
 
-/* The account link sits at the foot of the sidebar, under whatever space is left */
-.nav-foot {
+/* Documentation and the account link sit at the foot of the sidebar, under whatever space is left */
+.nav-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
   margin-top: auto;
-  padding-top: var(--space-3);
+}
+
+/* The account link, the very last thing in the sidebar */
+.nav-foot {
+  padding-top: var(--space-1);
 }
 
 /* ============================================================ Page layout */

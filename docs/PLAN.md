@@ -74,7 +74,12 @@ hand-written `[Serializable]` class that normally sits between the data and the 
 3. **Hide complexity, prevent errors.** Validate as the user types. Use dropdowns for enums and references,
    never free-text IDs. Users should never see raw JSON unless they ask for it.
 4. **Export is a contract.** The downloaded JSON shape is what engine devs build against. Keep it clean
-   (no editor-only data mixed in), documented, and stable.
+   (no editor-only data mixed in), documented, and stable. It's documented in the app itself, on the **Export
+   format** page (`/docs/export-format`, `frontend/src/pages/Docs/ExportFormatPage.jsx`; 2026-10-23). **Any decision
+   that changes what a download contains** (a key, a property type, a dialogue node type, a value's shape, a file
+   name, the rules a file must pass before it downloads) **includes checking that page**: its examples and tables are
+   built by the export functions, so new keys and types appear on their own, but the explanations next to them are
+   written by hand and show a dash until someone writes one.
 5. **Unity-first, engine-neutral core.** Targeting Unity changes the *outputs and the pitch*, not the *data model*.
    Stored and exported JSON never mentions Unity, C#, or ScriptableObjects. Unity tooling is an **output layer**
    (§5.7) that reads blueprints and assets the same way any other consumer would. This keeps the contract clean,
@@ -109,7 +114,7 @@ hand-written `[Serializable]` class that normally sits between the data and the 
 | Backend tests | Node's built-in test runner (`node --test`), calling the app with `fetch` | Route tests only; the shared validation is covered by the frontend's Vitest suite. |
 | Local DB | Docker Compose MySQL container, or a native MySQL install | Docker isn't on PATH right now. |
 | Hosting (end) | Static frontend host + Node host + managed MySQL | Decide in Phase 6. Internet deployment is preferred. |
-| **Engine target** | **Unity**, through the export shape | No Unity code in the first version. Asset files load with `JsonUtility`; it can't parse top-level arrays (the "Download all" files), dictionaries, or string-valued enums, so `export-format.md` should say how to read those. |
+| **Engine target** | **Unity**, through the export shape | No Unity code in the first version. Asset files load with `JsonUtility`; it can't parse top-level arrays (the "Download all" files), dictionaries, or string-valued enums, so the Export format page says how to read the arrays. |
 | **Unity tooling** | Future work since 2026-10-18 (§5.7) | Would be Unity 6 LTS, C# and TextMeshPro: client-side C# generation over the field-type registry, and a UPM package under `unity/` (installed by Git URL) with the ScriptableObject importer (Newtonsoft) and the dialogue runtime. |
 
 **Swap-friendly notes:** Postgres (which you already know) could replace MySQL with almost no design change
@@ -129,7 +134,6 @@ gameatlas/
 │   ├── STYLE-GUIDELINES.md   # ✔ Design system (authoritative for all UI)
 │   ├── STYLE-GUIDE.md        # ✔ Filled-in style questionnaire (background only)
 │   ├── flow/                 # Capstone diagrams, one each, as of today's app: operational-flow.md ✔, functional-decomposition.md ✔, design-flow.md ✔ (older detailed versions in flow/archive/)
-│   ├── export-format.md      # (Phase 2+) Public JSON export contract for engine devs
 │   └── unity-integration.md  # (future, §5.7) Install the package, generate C#, import assets, play dialogue
 ├── frontend/              # ✔ The Vite app (src/, index.html, package.json, vite.config.js, eslint.config.js)
 │   └── src/
@@ -138,7 +142,7 @@ gameatlas/
 │       │   └── form/      # ✔ Input components, PropertyRow, FieldInput, ListInput, FormRenderer, ValidationSummary
 │       ├── schema/        # ✔ Field-type registry, validation, blueprint drafts, blueprintStore (on the server since 2026-10-16)
 │       ├── data/          # ✔ Assets and dialogues: stores (on the server since 2026-10-16), data ↔ form values, dialogue graph model, export/import
-│       ├── pages/         # ✔ Route-level screens: Blueprints (list + builder), Dashboard (home), Settings, Projects (a project's settings), Assets (browser + view + editor), Dialogues (list + tree editor), NotFound
+│       ├── pages/         # ✔ Route-level screens: Blueprints (list + builder), Dashboard (home), Settings, Projects (a project's settings), Assets (browser + view + editor), Dialogues (list + tree editor), Docs (the Export format page, the public JSON contract for engine devs), NotFound
 │       ├── utils/         # ✔ Small helpers (downloads, dates, plurals, unsaved-changes guard)
 │       ├── unity/         # (future, §5.7) C# code generation: type mapping + templates (pure functions, no UI)
 │       └── api/           # ✔ fetch wrappers for the REST API (sendRequest + one file per resource), and the current user and project stores
@@ -459,7 +463,7 @@ scope. Three things follow from this design:
   other problem does.
 - **GameAtlas previews them.** The dialogue editor animates the line as the player will see it. This is pure
   frontend, it demos far better than a JSON blob, and **it ships whether or not the Unity package does.**
-- **The grammar is part of the export contract** and gets documented in `docs/export-format.md`, so an engine
+- **The grammar is part of the export contract** and gets documented on the Export format page, so an engine
   that isn't Unity can still parse it.
 
 ---
@@ -620,7 +624,7 @@ Goal: documents are saved on a server and can be browsed and reopened.
 - [x] Frontend pages for **Document list → Document editor** (`/blueprints/:id/assets` and `/blueprints/:id/assets/:key`)
 - [x] Frontend `api/` module (`sendRequest()`, users, projects, and the current user and project stores); loading and error states (`LoadingRecord`); save/delete that wait for the server and show its answer; the blueprint, asset and dialogue stores' localStorage calls swapped for API calls (all 2026-10-16)
 - [ ] `reference` field type (dropdown populated from `/api/documents?schemaId=…`). ✔ Already works against locally stored assets, including "That asset no longer exists" checks and link updates when an asset's ID changes; switch the source to the API
-- [ ] Write `docs/export-format.md`
+- [x] Document the export format: the in-app **Export format** page (`/docs/export-format`, no login needed) instead of `docs/export-format.md` (2026-10-23)
 - [ ] Users and projects (§5.6): sign-up and login (`bcryptjs` + session cookie; backend routes done 2026-10-10, ✔ login and sign-up pages 2026-10-10), ✔ a personal project with the examples at first login and the sidebar grouped by project (2026-10-16), ✔ the project in every asset, blueprint and dialogue page's URL (2026-10-21), ✔ a settings page per project with renaming, backups, members (add by email, remove, leave) and deleting it (2026-10-21), ✔ creating projects from the sidebar's New project button (2026-10-21), a project picker
 - [ ] Backend tests: route tests with `node --test` (validation itself is tested once, in the frontend's Vitest suite)
 - **Done when:** a document created in the browser survives a page reload and server restart, can be browsed, edited, exported, and can reference another document.
@@ -704,7 +708,7 @@ Electron desktop build · undo/redo · document version history.
 **Functional (per deliverable):** each phase's "Done when" above.
 
 **Correctness (engine devs):**
-- Exported JSON parses and matches `docs/export-format.md`
+- Exported JSON parses and matches the Export format page (`/docs/export-format`)
 - Server rejects invalid documents even if the frontend is bypassed
 - Import → export round-trips without data loss
 
@@ -828,6 +832,7 @@ Add new entries at the bottom. Format: `date · decision · why`.
 - 2026-10-21 · **The project is in the URL of every asset, blueprint and dialogue page** (`/projects/:projectId/assets`, `…/blueprints/…`, `…/dialogues/…`); `/`, `/settings`, `/account`, `/login` and `/signup` don't change, and `/projects` and `/projects/:projectId` have no page yet. `useCurrentProject()` reads the project from the URL, so the data hooks and the sidebar follow it without changes of their own; a project that isn't the user's shows "Project not found". Pages without a project in the URL (home, settings) use the last project visited, else the oldest, remembered in memory for the page load only. Settings names that project in its intro, confirmations and toasts, and `restoreData()`, `resetToExampleData()` and `deleteAllData()` take the project id instead of reading a "current" one. Switching projects remounts the page (`<Outlet key={projectId} />`), because React Router otherwise keeps a page's state, such as a filter or a half-edited form, when only the URL's ID changes. The blueprint store passes each list it loads or changes to the project store, so every project's sidebar section stays current after moving between projects · User request: until now every project's sidebar links went to the same pages.
 - 2026-10-21 · **Each project has a settings page** (`/projects/:projectId/settings`, opened from a cog beside the project's name in the sidebar): rename it, see when it was made and who is in it, back it up, restore it, empty it, add members by email, remove them or leave, and delete the whole project. There are no permissions yet: every member can do all of it. **Personal projects are marked in the database** by a new `projects.personal_user_id` column (§5.6), because the rules for them (nobody joins, leaves or deletes one; it can still be emptied and renamed) are the backend's to enforce, and until now only the frontend-made name said which project was personal. Its `UNIQUE` key also stops two tabs at a first login from making two personal projects. The frontend now makes the personal project when the user doesn't have one, rather than only when they have no projects at all, so someone added to another project before their first login still gets theirs. The last member of a shared project can't leave and has to delete it instead. Member changes lock the project's row (`FOR UPDATE`), so two at once can't overwrite each other's list. Refusals that depend on the project's state answer 409. The row and backup-preview markup the app-wide Settings page had became the shared `SettingRow` and `BackupPreview` components, which both settings pages use · User request.
 - 2026-10-21 · **New project button in the sidebar**, under the last project: a `ConfirmDialog` asks for the name, `POST /api/projects` makes an empty shared project, and `addProject()` puts it in the project store, so it shows in the sidebar without leaving the page; success and refusals are toasts, and a refused name keeps the dialog open. `ConfirmDialog` gained optional `children` (its content is now a `<form>`, so Enter in a field confirms), `confirmVariant`, `confirmIcon` and `confirmDisabled`; the defaults keep every destructive dialog as it was · User request; asked for as a ConfirmDialog rather than a new kind of dialog.
+- 2026-10-23 · **The export format is documented in the app**, on an **Export format** page at `/docs/export-format` (`frontend/src/pages/Docs/ExportFormatPage.jsx`), instead of the planned `docs/export-format.md`. It covers the files and the rules they all follow, then assets, dialogues and blueprints, and builds every example and table from the app's own code: the example files come from the starter project through `toExport()`, `toDialogueExport()` and `toDraft()`/`toDefinition()`, the property types and their settings from `FIELD_TYPES` and `TYPE_SETTINGS`, empty values from `toData()`, and the node types from the exported dialogue. So it can't drift from what GameAtlas downloads; only the explanations beside them are hand-written. It needs no login (its route sits outside `RequireLogin`), so a link can go to a programmer who has no account. The sidebar gets a foldable **Documentation** section at its foot, above the account link, built from a `DOC_LINKS` list so another page is one entry plus one route; it starts folded, opens by itself on a documentation page, and remembers being opened while the person moves between pages. Checking the page is now part of any decision that changes the export (§2.4) · User request: lay the ground for documentation, starting with what programmers loading the files need.
 
 ---
 

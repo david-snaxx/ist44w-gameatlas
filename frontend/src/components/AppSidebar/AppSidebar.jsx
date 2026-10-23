@@ -2,6 +2,7 @@ import {
   Box,
   Boxes,
   CircleUser,
+  FileJson,
   LayoutDashboard,
   LayoutList,
   LogIn,
@@ -26,7 +27,16 @@ import { useToast } from '../Toast/useToast.js'
 // Projects whose section is folded. Kept outside the components so it survives moving between pages.
 const foldedProjectIds = new Set()
 
-/** The main navigation in every page's AppShell: Home, one foldable section per project, New project, then General. */
+// Whether the person opened the Documentation section, which starts folded. Kept here for the same reason.
+let isDocsOpen = false
+
+/** The pages in the Documentation section. Each also needs its route under /docs in App.jsx. */
+const DOC_LINKS = [{ label: 'Export format', icon: FileJson, to: '/docs/export-format' }]
+
+/**
+ * The main navigation in every page's AppShell: Home, one foldable section per project, New project and General,
+ * then Documentation and the account at the foot.
+ */
 function AppSidebar() {
   const currentProject = useCurrentProject()
   const currentUser = useCurrentUser()
@@ -37,7 +47,7 @@ function AppSidebar() {
   const generalLinks = [{ label: 'Settings', icon: Settings, to: '/settings' }]
 
   // Every link, so the best match for the URL can be highlighted
-  const allLinks = [homeLink, ...generalLinks]
+  const allLinks = [homeLink, ...generalLinks, ...DOC_LINKS]
   const sections = []
   for (const project of currentProject.projects) {
     const section = buildProjectSection(project, currentProject.blueprints[project.id])
@@ -62,7 +72,10 @@ function AppSidebar() {
       {currentProject.error && <p className="nav-note">{currentProject.error}</p>}
       {showNewProject && <NewProjectButton />}
       <SidebarGroup title="General" links={generalLinks} activeTo={activeTo} />
-      <AccountLink />
+      <div className="nav-bottom">
+        <DocsSection activeTo={activeTo} pathname={pathname} />
+        <AccountLink />
+      </div>
     </>
   )
 }
@@ -275,6 +288,33 @@ function ProjectSection({ section, activeTo, pathname }) {
         <SidebarGroup title="Assets" links={section.assetLinks} activeTo={activeTo} />
         <SidebarGroup title="Dialogues" links={section.dialogueLinks} activeTo={activeTo} />
         <SidebarGroup title="Blueprints" links={section.blueprintLinks} activeTo={activeTo} />
+      </div>
+    </details>
+  )
+}
+
+/**
+ * The Documentation section, a native <details> like a project's. It starts folded, but is open on a documentation
+ * page so the highlighted link can be seen.
+ */
+function DocsSection({ activeTo, pathname }) {
+  // The browser already opened or closed it; remember which for the next page
+  function handleToggle(event) {
+    isDocsOpen = event.currentTarget.open
+  }
+
+  const isOnDocsPage = pathname.startsWith('/docs/')
+  const open = isDocsOpen || isOnDocsPage
+
+  return (
+    <details className="nav-project" open={open} onToggle={handleToggle}>
+      <summary className="nav-project-name">Documentation</summary>
+      <div className="nav-project-groups">
+        <nav>
+          {DOC_LINKS.map((link) => (
+            <SidebarLink key={link.to} link={link} activeTo={activeTo} />
+          ))}
+        </nav>
       </div>
     </details>
   )
