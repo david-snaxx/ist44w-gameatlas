@@ -95,7 +95,8 @@ export async function removeFromProjectList(
 ): Promise<void> {
     const selectQuery = `SELECT ${list} AS ids
                          FROM projects
-                         WHERE id = ?`;
+                         WHERE id = ?
+                         FOR UPDATE`;
     const [rows] = await connection.query<RowDataPacket[]>(selectQuery, [projectId]);
     const row = rows[0];
     if (!row) {

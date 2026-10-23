@@ -212,7 +212,11 @@ async function deleteProject(request: Request<{ id: string }>, response: Respons
     }
 
     await withTransaction(async (connection) => {
-        for (const memberId of project.memberUserIds) {
+        const memberIds = await lockMemberIds(connection, project.id);
+        if (memberIds === null) { // someone deleted the project already
+            return;
+        }
+        for (const memberId of memberIds) {
             await removeProjectFromUser(connection, memberId, project.id);
         }
         const deleteQuery = `DELETE FROM projects WHERE id = ?`;
@@ -351,7 +355,7 @@ async function addProjectToUser(connection: PoolConnection, userId: string, proj
 
 /** Takes the project back out of a user's list. Runs in the caller's transaction. */
 async function removeProjectFromUser(connection: PoolConnection, userId: string, projectId: string): Promise<void> {
-    const selectQuery = `SELECT project_ids AS projectIds FROM users WHERE id = ?`;
+    const selectQuery = `SELECT project_ids AS projectIds FROM users WHERE id = ? FOR UPDATE`;
     const [rows] = await connection.query<RowDataPacket[]>(selectQuery, [userId]);
     const row = rows[0];
     if (!row) {
