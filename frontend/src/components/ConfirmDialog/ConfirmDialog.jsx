@@ -8,8 +8,8 @@ import Button from '../Button/Button.jsx'
  *
  * It uses the browser's own <dialog> element, which dims the page behind it and closes on Esc
  * (Esc calls onCancel). Optional: `children` go under the message (e.g. a field to fill in, where Enter confirms),
- * `confirmVariant` and `confirmIcon` change the confirm button from a red delete one, and `confirmDisabled` turns it
- * off while a request is on its way.
+ * `confirmVariant` and `confirmIcon` change the confirm button from a red delete one, `confirmDisabled` turns it
+ * off while a request is on its way, and `cancelVariant` changes the Cancel button's look.
  */
 function ConfirmDialog({
   title,
@@ -18,6 +18,7 @@ function ConfirmDialog({
   confirmVariant = 'danger',
   confirmIcon = Trash2,
   confirmDisabled = false,
+  cancelVariant = 'secondary',
   onConfirm,
   onCancel,
   children,
@@ -45,7 +46,9 @@ function ConfirmDialog({
         <p className="dialog-message">{message}</p>
         {children && <div className="dialog-fields">{children}</div>}
         <div className="dialog-actions">
-          <Button onClick={onCancel}>Cancel</Button>
+          <Button variant={cancelVariant} onClick={onCancel}>
+            Cancel
+          </Button>
           <Button type="submit" variant={confirmVariant} icon={confirmIcon} disabled={confirmDisabled}>
             {confirmLabel}
           </Button>

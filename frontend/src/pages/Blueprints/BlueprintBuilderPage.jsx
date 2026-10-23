@@ -36,6 +36,7 @@ import {
   usesBlueprint,
   parseBlueprintFile,
 } from '../../schema/blueprintDraft.js'
+import { describeBlueprintChanges } from '../../data/assetData.js'
 import { deleteAssetsOfBlueprint, moveAssetsToBlueprint } from '../../data/assetStore.js'
 import { retargetDialogueBlueprint } from '../../data/dialogueStore.js'
 import { useAssets } from '../../data/useAssets.js'
@@ -51,6 +52,7 @@ import {
 import { downloadJson } from '../../utils/downloadJson.js'
 import { plural } from '../../utils/plural.js'
 import { useUnsavedChanges } from '../../utils/useUnsavedChanges.js'
+import ChangeReport from './ChangeReport.jsx'
 import PropertyEditor from './PropertyEditor.jsx'
 import PropertyList from './PropertyList.jsx'
 
@@ -119,6 +121,8 @@ function BlueprintBuilder({ projectId, blueprintId, savedBlueprint, importedDefi
   // The side panel: null when closed, otherwise { mode, parentUid, field, keyTouched, touched, showErrors }
   const [editor, setEditor] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  // What saving would do to the blueprint's assets (see describeBlueprintChanges()); set while the save dialog is open
+  const [changeReport, setChangeReport] = useState(null)
   const [previewTab, setPreviewTab] = useState('form')
   const [sampleValues, setSampleValues] = useState({})
   const [touchedPaths, setTouchedPaths] = useState([])
@@ -292,12 +296,18 @@ function BlueprintBuilder({ projectId, blueprintId, savedBlueprint, importedDefi
 
   // ---------- Saving, discarding, deleting, exporting ----------
 
-  async function handleSave() {
+  // Works out what the save would do to the blueprint's assets and asks first; nothing is sent until confirmed
+  function handleSave() {
     setShowAllErrors(true)
     if (problemCount > 0) {
       toast.show({ status: 'error', message: `Fix ${plural(problemCount, 'problem')} before saving` })
       return
     }
+    setChangeReport(describeBlueprintChanges(baseline, definition, blueprints, assets))
+  }
+
+  async function handleConfirmSave() {
+    setChangeReport(null)
 
     let previousId = null
     if (baseline) {
@@ -570,6 +580,15 @@ function BlueprintBuilder({ projectId, blueprintId, savedBlueprint, importedDefi
         />
       )}
 
+      {changeReport && (
+        <SaveDialog
+          report={changeReport}
+          baseline={baseline}
+          onCancel={() => setChangeReport(null)}
+          onConfirm={handleConfirmSave}
+        />
+      )}
+
       {confirmDelete && (
         <ConfirmDialog
           title="Delete blueprint?"
@@ -582,6 +601,40 @@ function BlueprintBuilder({ projectId, blueprintId, savedBlueprint, importedDefi
 
       <UnsavedChangesDialog blocker={blocker} name={draft.name || 'this blueprint'} />
     </AppShell>
+  )
+}
+
+/**
+ * The confirmation every save opens: what the change does to the blueprint's assets, even when that's nothing.
+ * report: from describeBlueprintChanges(); baseline: the saved blueprint, or null for a new one.
+ */
+function SaveDialog({ report, baseline, onCancel, onConfirm }) {
+  let title = 'Save this new blueprint?'
+  let message = "It's a new blueprint, so no assets are affected."
+  if (baseline) {
+    title = `Save changes to "${baseline.name}"?`
+    message = saveMessage(report)
+  }
+
+  // Only a report with something in it goes under the message
+  let details = null
+  if (report.affectedCount > 0) {
+    details = <ChangeReport report={report} />
+  }
+
+  return (
+    <ConfirmDialog
+      title={title}
+      message={message}
+      confirmLabel="Confirm change"
+      confirmVariant="primary"
+      confirmIcon={Save}
+      cancelVariant="danger"
+      onCancel={onCancel}
+      onConfirm={onConfirm}
+    >
+      {details}
+    </ConfirmDialog>
   )
 }
 
@@ -703,6 +756,17 @@ function statusText(showAllErrors, problemCount, isDirty, version) {
     return 'Unsaved changes'
   }
   return `Saved · version ${version}`
+}
+
+// What the save confirmation says about a saved blueprint's assets, above the report
+function saveMessage(report) {
+  if (report.assetCount === 0) {
+    return 'This blueprint has no assets yet, so no assets are affected.'
+  }
+  if (report.affectedCount === 0) {
+    return `Checked its ${plural(report.assetCount, 'asset')}: no values are lost or converted, and no new problems appear.`
+  }
+  return `Affected: ${report.affectedCount} of its ${plural(report.assetCount, 'asset')}. A lost value stops showing at once and is gone for good when its asset is next saved.`
 }
 
 export default BlueprintBuilderPage

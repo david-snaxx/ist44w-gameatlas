@@ -1,5 +1,5 @@
 import { toSnakeCase } from '../schema/blueprintDraft.js'
-import { defaultValue, VECTOR_AXES } from '../schema/fieldTypes.js'
+import { defaultValue, describeType, VECTOR_AXES } from '../schema/fieldTypes.js'
 import { validateValues } from '../schema/validation.js'
 import { uniqueKey } from '../utils/uniqueKey.js'
 
@@ -226,11 +226,177 @@ export function labelForPath(fields, path) {
   return text
 }
 
+/** A saved asset's problems against a blueprint, as messages by property path ({ "stats.strength": "…" }). */
+export function findAssetProblems(asset, blueprint, referenceKeys) {
+  const values = toFormValues(blueprint.fields, asset.data)
+  return validateValues(blueprint.fields, values, '', referenceKeys)
+}
+
 /** How many problems a saved asset has against its blueprint as it is now (0 means it can be exported). */
 export function countAssetProblems(asset, blueprint, referenceKeys) {
-  const values = toFormValues(blueprint.fields, asset.data)
-  const errors = validateValues(blueprint.fields, values, '', referenceKeys)
-  return Object.keys(errors).length
+  return Object.keys(findAssetProblems(asset, blueprint, referenceKeys)).length
+}
+
+// ---------- What a blueprint change does to its assets ----------
+
+/**
+ * What saving `nextBlueprint` in place of `previousBlueprint` (null for a new one) does to that blueprint's assets,
+ * worked out with the same conversions and checks the editors use, before anything is saved. Assets keep their saved
+ * data and are read through the new blueprint, so a value is really gone once the asset is next saved. Returns
+ * { assetCount, affectedCount, lostValues, changedValues, newProblems }; each list holds { id, name, details }.
+ */
+export function describeBlueprintChanges(previousBlueprint, nextBlueprint, blueprints, assets) {
+  const report = { assetCount: 0, affectedCount: 0, lostValues: [], changedValues: [], newProblems: [] }
+  if (!previousBlueprint) {
+    return report
+  }
+
+  const blueprintAssets = assets.filter((asset) => asset.schemaId === previousBlueprint.id)
+  report.assetCount = blueprintAssets.length
+
+  const referenceKeys = referenceKeysFor(blueprints, assets)
+  // A renamed blueprint takes its assets along, so links to them (its own included) are checked under the new ID
+  referenceKeys[nextBlueprint.id] = referenceKeys[previousBlueprint.id]
+
+  const previousFields = fieldsByPath(previousBlueprint.fields, '')
+  const nextFields = fieldsByPath(nextBlueprint.fields, '')
+  const affectedIds = new Set()
+
+  for (const asset of blueprintAssets) {
+    const name = assetLabel(asset, previousBlueprint)
+    // The asset as it will be the next time it's saved under the new blueprint
+    const nextData = toData(nextBlueprint.fields, toFormValues(nextBlueprint.fields, asset.data))
+
+    const lost = describeLostValues(asset.data, previousFields, nextFields, previousBlueprint.fields)
+    if (lost.length > 0) {
+      report.lostValues.push({ id: asset.id, name: name, details: lost })
+      affectedIds.add(asset.id)
+    }
+
+    const changed = describeChangedValues(asset.data, nextData, previousFields, nextFields, nextBlueprint.fields)
+    if (changed.length > 0) {
+      report.changedValues.push({ id: asset.id, name: name, details: changed })
+      affectedIds.add(asset.id)
+    }
+
+    const before = findAssetProblems(asset, previousBlueprint, referenceKeys)
+    const after = findAssetProblems(asset, nextBlueprint, referenceKeys)
+    const problems = []
+    for (const path of Object.keys(after)) {
+      if (!before[path]) {
+        problems.push(`${labelForPath(nextBlueprint.fields, path)}: ${after[path]}`)
+      }
+    }
+    if (problems.length > 0) {
+      report.newProblems.push({ id: asset.id, name: name, details: problems })
+      affectedIds.add(asset.id)
+    }
+  }
+
+  report.affectedCount = affectedIds.size
+  return report
+}
+
+// Every property in a blueprint's tree by its path ("stats.strength"): { [path]: field }. Parents come before children.
+function fieldsByPath(fields, prefix) {
+  const found = {}
+  for (const field of fields ?? []) {
+    if (!field.key) {
+      continue
+    }
+    let path = field.key
+    if (prefix) {
+      path = `${prefix}.${field.key}`
+    }
+    found[path] = field
+
+    if (field.type === 'object') {
+      const children = fieldsByPath(field.fields, path)
+      for (const childPath of Object.keys(children)) {
+        found[childPath] = children[childPath]
+      }
+    }
+  }
+  return found
+}
+
+// Filled-in values whose property is gone from the new blueprint, as "Label: value". A removed group is one line.
+function describeLostValues(data, previousFields, nextFields, previousTopFields) {
+  const details = []
+  const reportedPaths = []
+
+  for (const path of Object.keys(previousFields)) {
+    if (nextFields[path]) {
+      continue
+    }
+    const insideReported = reportedPaths.some((reported) => path.startsWith(`${reported}.`))
+    if (insideReported) {
+      continue
+    }
+    const value = valueAtPath(data, path)
+    if (isFilledIn(previousFields[path], value)) {
+      details.push(`${labelForPath(previousTopFields, path)}: ${shortJson(value)}`)
+      reportedPaths.push(path)
+    }
+  }
+  return details
+}
+
+// Filled-in values whose property changes type, as "Label: old type → new type (old value → new value)"
+function describeChangedValues(data, nextData, previousFields, nextFields, nextTopFields) {
+  const details = []
+
+  for (const path of Object.keys(previousFields)) {
+    const previousField = previousFields[path]
+    const nextField = nextFields[path]
+    if (!nextField) {
+      continue
+    }
+    // describeType() names list item types and link targets too ("List of whole number", "Link to entity")
+    const previousType = describeType(previousField)
+    const nextType = describeType(nextField)
+    if (previousType === nextType) {
+      continue
+    }
+
+    const value = valueAtPath(data, path)
+    if (isFilledIn(previousField, value)) {
+      const label = labelForPath(nextTopFields, path)
+      const nextValue = valueAtPath(nextData, path)
+      details.push(`${label}: ${previousType} → ${nextType} (${shortJson(value)} → ${shortJson(nextValue)})`)
+    }
+  }
+  return details
+}
+
+// The value at a property path in saved data ("stats.strength" -> data.stats.strength), or undefined
+function valueAtPath(data, path) {
+  let value = data
+  for (const part of path.split('.')) {
+    if (value === null || typeof value !== 'object') {
+      return undefined
+    }
+    value = value[part]
+  }
+  return value
+}
+
+// Whether a saved value holds something other than what the property saves as when left empty
+function isFilledIn(field, value) {
+  if (value === undefined) {
+    return false
+  }
+  const emptyValue = toData([field], {})[field.key]
+  return JSON.stringify(value) !== JSON.stringify(emptyValue)
+}
+
+// A value as short JSON for a report line, cut off after 40 characters
+function shortJson(value) {
+  const text = JSON.stringify(value) ?? 'nothing'
+  if (text.length > 40) {
+    return `${text.slice(0, 40)}…`
+  }
+  return text
 }
 
 // ---------- Duplicating ----------
