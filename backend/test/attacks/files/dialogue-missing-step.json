@@ -1,0 +1,73 @@
+{
+  "id": "merchant_greeting",
+  "type": "dialogue",
+  "name": "Merchant greeting",
+  "description": "The Old Merchant greets the player, and gives returning customers a free potion.",
+  "speakerBlueprint": "entity",
+  "itemBlueprint": "item",
+  "startNode": "line_1",
+  "nodes": [
+    {
+      "id": "line_1",
+      "type": "line",
+      "speaker": "old_merchant",
+      "text": "Ah, a traveler! Care to see my wares?",
+      "next": "choice_1"
+    },
+    {
+      "id": "choice_1",
+      "type": "choice",
+      "responses": [
+        {
+          "id": "response_1",
+          "text": "Show me what you have.",
+          "next": "condition_1"
+        },
+        {
+          "id": "response_2",
+          "text": "Not today.",
+          "next": "line_4"
+        }
+      ]
+    },
+    {
+      "id": "condition_1",
+      "type": "checkFlag",
+      "flag": "met_merchant",
+      "ifSet": "line_2",
+      "ifNotSet": "action_2"
+    },
+    {
+      "id": "action_1",
+      "type": "giveItem",
+      "item": "healing_potion",
+      "quantity": 1,
+      "next": "end_1"
+    },
+    {
+      "id": "action_2",
+      "type": "setFlag",
+      "flag": "met_merchant",
+      "value": true,
+      "next": "line_3"
+    },
+    {
+      "id": "line_3",
+      "type": "line",
+      "speaker": "old_merchant",
+      "text": "First time here? Come back soon and I'll have something for you.",
+      "next": "end_1"
+    },
+    {
+      "id": "line_4",
+      "type": "line",
+      "speaker": "old_merchant",
+      "text": "Safe travels, then.",
+      "next": "end_1"
+    },
+    {
+      "id": "end_1",
+      "type": "end"
+    }
+  ]
+}
