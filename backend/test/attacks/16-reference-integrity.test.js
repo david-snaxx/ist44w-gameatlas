@@ -57,7 +57,7 @@ test('links survive renames and degrade gracefully on deletes', async (t) => {
 
             const rename = await api('PUT', `/api/assets/${blade.id}`, {
                 cookie: owner.cookie,
-                body: { projectId: project.id, key: 'great_blade', data: { name: 'Blade', power: 2 } },
+                body: { projectId: project.id, key: 'great_blade', data: { name: 'Blade', power: 2 }, updatedAt: blade.updatedAt },
             })
             assert.equal(rename.status, 200, `Renaming the asset failed (${summarize(rename)}).`)
 
@@ -144,7 +144,7 @@ test('links survive renames and degrade gracefully on deletes', async (t) => {
 
             const collide = await api('PUT', `/api/assets/${blade.id}`, {
                 cookie: owner.cookie,
-                body: { projectId: project.id, key: 'shield', data: { name: 'Blade', power: 2 } },
+                body: { projectId: project.id, key: 'shield', data: { name: 'Blade', power: 2 }, updatedAt: blade.updatedAt },
             })
             console.log(`Renaming blade onto shield's ID: status ${collide.status}.`)
             assert.ok(collide.status === 400 || collide.status === 409, `A clashing rename was not refused (${summarize(collide)}).`)

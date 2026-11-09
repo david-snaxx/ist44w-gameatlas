@@ -2,7 +2,7 @@
  * Attack 14 — Two people saving the same asset.
  *
  * Load one asset in two sessions (two browser tabs), then save a different change from each at the
- * same time.
+ * same time. Each save sends the `updatedAt` its tab loaded, as the asset editor does.
  *
  * PASS = the second save is refused because someone saved in between (409/412), so the first change
  * isn't silently lost.
@@ -58,9 +58,11 @@ test('overlapping saves of one asset do not silently lose a change', async (t) =
         assert.equal(load1.status, 200, `Setup: session 1 could not load the asset (${summarize(load1)}).`)
         assert.equal(load2.status, 200, `Setup: session 2 could not load the asset (${summarize(load2)}).`)
 
-        // both save a different change at the same time
-        const save1 = api('PUT', `/api/assets/${asset.id}`, { cookie: cookie1, body: { projectId: project.id, key: 'shared_item', data: { name: 'Change from tab 1', power: 1 } } })
-        const save2 = api('PUT', `/api/assets/${asset.id}`, { cookie: cookie2, body: { projectId: project.id, key: 'shared_item', data: { name: 'Change from tab 2', power: 2 } } })
+        // both save a different change at the same time, each from the copy it loaded
+        const change1 = { projectId: project.id, key: 'shared_item', data: { name: 'Change from tab 1', power: 1 }, updatedAt: load1.body.updatedAt }
+        const change2 = { projectId: project.id, key: 'shared_item', data: { name: 'Change from tab 2', power: 2 }, updatedAt: load2.body.updatedAt }
+        const save1 = api('PUT', `/api/assets/${asset.id}`, { cookie: cookie1, body: change1 })
+        const save2 = api('PUT', `/api/assets/${asset.id}`, { cookie: cookie2, body: change2 })
         const [result1, result2] = await Promise.all([save1, save2])
         console.log(`Save from tab 1: status ${result1.status}; save from tab 2: status ${result2.status}.`)
 

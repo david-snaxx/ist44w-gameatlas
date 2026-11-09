@@ -1,9 +1,14 @@
+import { ownValue } from '../utils/ownValue.js'
 import { FIELD_TYPES, TYPE_SETTINGS, VECTOR_AXES } from './fieldTypes.js'
 
 export const BLUEPRINT_ID_PATTERN = /^[a-z][a-z0-9_]*$/
 export const PROPERTY_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/
 export const MAX_BLUEPRINT_ID_LENGTH = 64
 export const MAX_BLUEPRINT_NAME_LENGTH = 120
+/** The most properties a blueprint can have, counting the ones inside groups. */
+export const MAX_BLUEPRINT_PROPERTIES = 1000
+/** How deep groups can go: a group at the top is level 1, a group inside it level 2, and so on. */
+export const MAX_GROUP_DEPTH = 10
 
 function isEmpty(value) {
   return value === undefined || value === null || value === ''
@@ -62,7 +67,7 @@ function validateValue(field, value, referenceKeys) {
         return null
       }
       if (referenceKeys) {
-        const existingKeys = referenceKeys[field.targetSchema] ?? []
+        const existingKeys = ownValue(referenceKeys, field.targetSchema) ?? []
         if (!existingKeys.includes(value)) return 'That asset no longer exists'
       }
       return null
@@ -99,7 +104,7 @@ export function validateValues(fields, values = {}, prefix = '', referenceKeys) 
     if (prefix) {
       path = `${prefix}.${field.key}`
     }
-    const value = values[field.key]
+    const value = ownValue(values, field.key)
 
     if (field.type === 'object') {
       const groupErrors = validateValues(field.fields ?? [], value ?? {}, path, referenceKeys)
@@ -213,7 +218,7 @@ export function validateFieldDefinition(field, options = {}) {
     }
   }
 
-  if (!FIELD_TYPES[field.type]) {
+  if (!ownValue(FIELD_TYPES, field.type)) {
     errors.type = 'Choose a type'
     return errors
   }
@@ -317,12 +322,53 @@ export function validateBlueprint(draft, options = {}) {
   if (draft.fields.length === 0) {
     general.fields = 'Add at least one property'
   }
+  const sizeProblem = checkBlueprintSize(draft.fields)
+  if (sizeProblem) {
+    general.fields = sizeProblem
+  }
   if (Object.keys(general).length > 0) {
     errors.blueprint = general
   }
 
-  checkFieldsInto(errors, draft.fields, blueprintIds)
+  // checkFieldsInto() goes through every level, so a blueprint that's too big stops at the size problem
+  if (!sizeProblem) {
+    checkFieldsInto(errors, draft.fields, blueprintIds)
+  }
   return errors
+}
+
+/**
+ * Checks that a blueprint's properties (a draft's or a saved one's) number at most MAX_BLUEPRINT_PROPERTIES and that
+ * groups go at most MAX_GROUP_DEPTH levels deep. Returns a message or null. Run it before anything that goes through
+ * every level of a blueprint from outside the app: it stops at the first limit it passes and uses no recursion, so
+ * even one nested thousands of levels deep can't overflow the stack.
+ */
+export function checkBlueprintSize(fields) {
+  // A to-do list of property lists still to look at, each with how deep its group is (0 for the top)
+  const toVisit = [{ fields: fields, depth: 0 }]
+  let count = 0
+  while (toVisit.length > 0) {
+    const level = toVisit.pop()
+    if (!Array.isArray(level.fields)) {
+      continue
+    }
+
+    for (const field of level.fields) {
+      count++
+      if (count > MAX_BLUEPRINT_PROPERTIES) {
+        return `Use ${MAX_BLUEPRINT_PROPERTIES} properties or fewer, counting the ones inside groups`
+      }
+      const isGroup = Boolean(field) && field.type === 'object'
+      if (isGroup) {
+        const depth = level.depth + 1
+        if (depth > MAX_GROUP_DEPTH) {
+          return `Groups can only go ${MAX_GROUP_DEPTH} levels deep`
+        }
+        toVisit.push({ fields: field.fields, depth: depth })
+      }
+    }
+  }
+  return null
 }
 
 // Checks every property (including those inside groups) and stores each one's errors under its uid

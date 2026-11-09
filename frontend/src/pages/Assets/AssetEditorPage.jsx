@@ -218,13 +218,16 @@ function AssetEditor({ projectId, blueprintId, assetKey, savedAsset, imported, o
       relinkedDialogueCount = countLinkingDialogues(baseline, blueprint, dialogues)
     }
 
-    // A new asset has no id until the server gives it one
+    // A new asset has no id until the server gives it one. A saved one sends the time of the copy being edited,
+    // so the server can refuse the save if someone else saved since.
     let id = null
+    let updatedAt = null
     if (baseline) {
       id = baseline.id
+      updatedAt = baseline.updatedAt
     }
     setSending(true)
-    const result = await saveAsset({ id: id, key: key, schemaId: blueprint.id, data: data })
+    const result = await saveAsset({ id: id, key: key, schemaId: blueprint.id, data: data, updatedAt: updatedAt })
     setSending(false)
 
     if (result.error) {

@@ -584,17 +584,19 @@ function assetOptionsFor(blueprints, assets, blueprintId) {
   return options
 }
 
-// The graph's problems sorted by node: { [nodeId]: [problem, …] }. Dialogue-wide problems are left out.
+// The graph's problems sorted by node: Map of nodeId -> [problem, …]. Dialogue-wide problems are left out.
+// A Map, not a plain object, because a node ID can be any text: "constructor" or "__proto__" would clash with
+// what every object inherits.
 function groupProblemsByNode(problems) {
-  const byNode = {}
+  const byNode = new Map()
   for (const problem of problems) {
     if (!problem.nodeId) {
       continue
     }
-    if (!byNode[problem.nodeId]) {
-      byNode[problem.nodeId] = []
+    if (!byNode.has(problem.nodeId)) {
+      byNode.set(problem.nodeId, [])
     }
-    byNode[problem.nodeId].push(problem)
+    byNode.get(problem.nodeId).push(problem)
   }
   return byNode
 }

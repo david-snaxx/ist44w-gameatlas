@@ -64,9 +64,9 @@ you can remove them from the Settings/account pages or the database. The one exc
 
 | # | File | Attack | PASS means |
 |---|------|--------|------------|
-| 1 | `01-unauthenticated-account-access.test.js` | Read/change/delete an account with no login | All four account routes refuse (401/403) |
-| 2 | `02-password-brute-force.test.js` | A few hundred wrong passwords | The server starts refusing (429/503) |
-| 3 | `03-login-flood-health.test.js` | Many logins at once, measure health | Health stays fast and extra logins are refused |
+| 1 | `01-unauthenticated-account-access.test.js` | Read/change/delete an account with no login | All four account routes refuse (401/403) or don't exist (404) |
+| 2 | `02-password-brute-force.test.js` | A few hundred wrong passwords | The server starts refusing (429/503); the login limiter does after 10 |
+| 3 | `03-login-flood-health.test.js` | 100 wrong-password logins at once; 100 right-password logins 5 at a time; measure health | Health stays fast and extra logins are refused in both floods |
 | 4 | `04-malformed-email-signup.test.js` | Over-long / spaces / symbols / no-@ emails | Each gets a clear 400 (not 500, not accepted) |
 | 5 | `05-sql-injection.test.js` | SQL payloads in login, display name, project name, asset value, asset ID and the URL | Text stored as typed, IDs/URLs find nothing, tables intact |
 | 6 | `06-cross-project-access.test.js` | Read/edit/delete another user's assets, blueprints, dialogues, members and project; add himself as a member | Every attempt answers 404, data untouched |
@@ -77,7 +77,7 @@ you can remove them from the Settings/account pages or the database. The one exc
 | 11 | `11-corrupt-files.test.js` | Restores that aren't JSON or are broken inside; dialogues with a missing or null step | Each refused with 400, project unchanged (+ hand-test files) |
 | 12 | `12-oversized-blueprint.test.js` | 3,000 properties; 60 and 10,000 levels of nesting | Saved or a clear 4xx, never a 500; server stays up (+ browser check) |
 | 13 | `13-many-users-load.test.js` | 10/50/200 users loading at once | Server stays up; reports req/s and slowest |
-| 14 | `14-concurrent-asset-save.test.js` | Two tabs saving one asset at once | Second save refused; first change not lost |
+| 14 | `14-concurrent-asset-save.test.js` | Two tabs saving one asset at once, each with the `updatedAt` it loaded | Second save refused (409); first change not lost |
 | 15 | `15-member-no-roles.test.js` | A plain member renames/deletes/wipes a shared project or removes the owner | Each owner-level action refused; data unchanged (all `todo`, see below) |
 | 16 | `16-reference-integrity.test.js` | Rename/delete an asset or blueprint that others link to | Renames carry links along; deletes never make a read 500 |
 | 17 | `17-duplicate-id-race.test.js` | Two identical creates at once (asset, blueprint, dialogue, personal project), 5 rounds each | Every round: one 201, one clean 400/409; never two rows or a 500 |
@@ -116,7 +116,7 @@ by hand. Script 11 also sends the first two to the server.
 | `cut-off-backup.json` | A project's settings (cog beside its name) → **Choose backup file** | "This file couldn't be read as a backup."; nothing changes |
 | `image-renamed.json` | **Choose backup file**, and **Import dialogue** / **Import asset** in the top bar | A clear "couldn't be read" message each time |
 | `dialogue-missing-step.json` | Dialogues → **Import dialogue** | Opens in the editor with the link to the deleted step left unconnected; nothing is saved until Save |
-| `backup-broken-dialogue.json` | **Choose backup file** in a **new, empty project** (a restore replaces everything in the project) | Refused with a clear message. If it's accepted instead, open the "merchant_greeting" dialogue and see whether the editor still works |
+| `backup-broken-dialogue.json` | **Choose backup file** in a **new, empty project** (a restore replaces everything in the project) | "This backup is damaged and can't be restored." as soon as it's picked; nothing changes. If it's accepted instead, open the "merchant_greeting" dialogue and see whether the editor still works |
 
 ## Tuning knobs (environment variables)
 
@@ -127,6 +127,7 @@ by hand. Script 11 also sends the first two to the server.
 | `KEEP_ATTACK_DATA` | 11, 12 (`1` keeps the account for the browser check) | off |
 | `BRUTE_FORCE_ATTEMPTS` | 2 | `300` |
 | `FLOOD_COUNT` | 3 | `100` |
+| `FLOOD_WAVE_SIZE` | 3 (right-password logins sent at once) | `5` |
 | `FLOOD_HEALTH_LIMIT_MS` | 3 | `1000` |
 | `LOAD_USER_COUNTS` | 13 | `10,50,200` |
 | `LOAD_DURATION_MS` | 13 | `30000` |

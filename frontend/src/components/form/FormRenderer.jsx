@@ -1,4 +1,5 @@
 import { defaultValue } from '../../schema/fieldTypes.js'
+import { ownValue } from '../../utils/ownValue.js'
 import FieldInput from './FieldInput.jsx'
 import PropertyRow from './PropertyRow.jsx'
 
@@ -38,7 +39,7 @@ function FormField({ field, values, onChange, errors, referenceOptions, pathPref
   if (pathPrefix) {
     path = `${pathPrefix}.${field.key}`
   }
-  const value = values[field.key]
+  const value = ownValue(values, field.key)
 
   // Reports a new value for this property as a whole new values object.
   // changedPath is the path of what the user actually edited (deeper than `path` inside a group).
@@ -65,7 +66,7 @@ function FormField({ field, values, onChange, errors, referenceOptions, pathPref
       label={field.label || 'Untitled property'}
       required={field.required}
       help={field.help}
-      error={errors[path]}
+      error={ownValue(errors, path)}
     >
       <FieldInput
         field={field}

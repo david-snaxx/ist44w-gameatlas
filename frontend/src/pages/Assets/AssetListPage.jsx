@@ -22,6 +22,7 @@ import { useAssets } from '../../data/useAssets.js'
 import { useBlueprint, useBlueprints } from '../../schema/useBlueprints.js'
 import { downloadCollection } from '../../utils/downloadJson.js'
 import { formatDateTime } from '../../utils/formatDate.js'
+import { ownValue } from '../../utils/ownValue.js'
 
 // Property types short enough to show as a table column, and how many of them to show
 const COLUMN_TYPES = ['string', 'int', 'float', 'bool', 'enum', 'reference']
@@ -185,7 +186,8 @@ function formatCell(field, value, assetLabels) {
   }
   if (field.type === 'reference') {
     // Show the linked asset's name; if it's gone, show its ID
-    return assetLabels[field.targetSchema]?.[value] ?? value
+    const labels = ownValue(assetLabels, field.targetSchema)
+    return ownValue(labels, value) ?? value
   }
   return String(value)
 }
@@ -217,7 +219,7 @@ function buildRows(blueprintAssets, blueprint, propertyColumns, assetLabels) {
     // The search looks at the name, the ID, and the text shown in each property column
     const searchParts = [row.name, row.key]
     for (const field of propertyColumns) {
-      const value = asset.data?.[field.key] ?? null
+      const value = ownValue(asset.data, field.key) ?? null
       row[propertyColumnKey(field)] = value
       searchParts.push(formatCell(field, value, assetLabels))
     }

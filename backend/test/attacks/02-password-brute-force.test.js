@@ -13,7 +13,7 @@
 
 import test, { before } from 'node:test'
 import assert from 'node:assert/strict'
-import { api, isServerUp, SERVER_DOWN_MESSAGE, newAccount, deleteAccount } from './helpers.js'
+import { api, isServerUp, SERVER_DOWN_MESSAGE, newAccount, logIn, deleteAccount } from './helpers.js'
 
 let serverUp = false
 before(async () => {
@@ -28,6 +28,8 @@ test('repeated wrong passwords get throttled', async (t) => {
 
     const attempts = Number(process.env.BRUTE_FORCE_ATTEMPTS ?? '300')
     const target = await newAccount('bruteforce')
+    // log in before the attack: once the login limiter blocks this account, cleanup deletes it through this session
+    await logIn(target)
     try {
         let blockedAt = 0
         let lastStatus = 0

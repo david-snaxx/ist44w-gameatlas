@@ -166,32 +166,34 @@ export async function logIn(account) {
 }
 
 /**
- * Best-effort cleanup for a throwaway account: logs in and deletes it through DELETE /me (which also
- * removes projects nobody else is in), then falls back to the open DELETE /:id route. Never throws.
+ * Best-effort cleanup for a throwaway account ({ email, password, cookie? }): deletes it through DELETE /me,
+ * which also removes projects nobody else is in. Uses the account's session from an earlier logIn() first, then
+ * logs in again if that session no longer works. Never throws.
  */
 export async function deleteAccount(account) {
     try {
-        const login = await logIn(account)
-        if (login.cookie) {
-            const deleted = await api('DELETE', '/api/users/me', {
-                cookie: login.cookie,
-                body: { password: account.password },
-            })
+        // the earlier session still works after the login limiter has blocked this account (scripts 02 and 03)
+        if (account.cookie) {
+            const deleted = await deleteWithCookie(account, account.cookie)
             if (deleted.status === 204) {
                 return
             }
         }
-    } catch {
-        // fall through to the open route below
-    }
-
-    if (account.id) {
-        try {
-            await api('DELETE', `/api/users/${account.id}`)
-        } catch {
-            // nothing more we can do; this is only cleanup
+        const login = await logIn(account)
+        if (login.cookie) {
+            await deleteWithCookie(account, login.cookie)
         }
+    } catch {
+        // nothing more we can do; this is only cleanup
     }
+}
+
+/** Sends DELETE /api/users/me for an account with the given session cookie. */
+function deleteWithCookie(account, cookie) {
+    return api('DELETE', '/api/users/me', {
+        cookie: cookie,
+        body: { password: account.password },
+    })
 }
 
 /** Creates a non-personal project as the logged-in owner and returns its row. Throws on failure. */

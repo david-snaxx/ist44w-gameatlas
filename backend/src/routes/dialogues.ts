@@ -3,10 +3,18 @@ import type { Request, Response } from 'express';
 import type { RowDataPacket } from 'mysql2/promise';
 import { randomUUID } from 'node:crypto';
 import { db } from '../db.ts';
-import { addToProjectList, isDuplicateKey, openProject, removeFromProjectList, withTransaction } from '../projectAccess.ts';
+import {
+    addToProjectList,
+    isDuplicateKey,
+    lockProject,
+    openProject,
+    removeFromProjectList,
+    withTransaction,
+} from '../projectAccess.ts';
 import type { Dialogue, DialogueProblem } from '../types/dialogue.ts';
 import type { Blueprint } from '../types/blueprint.ts';
 import {
+    checkDialogueStructure,
     dialogueCheckContext,
     validateDialogueDetails,
     validateDialogueGraph,
@@ -14,7 +22,7 @@ import {
 
 /*
  * A dialogue's `id` is its row's UUID, and its snake_case `key` is unique within its project. Unfinished trees can
- * be saved, so only the name and key are refused; the tree's problems come back as `problems` on GET.
+ * be saved, so only the name, key and a broken structure are refused; the tree's problems come back on GET.
  */
 
 // region Express Routing
@@ -78,8 +86,9 @@ async function postDialogue(request: Request, response: Response) {
     if (detailErrors.length > 0) {
         return response.status(400).json({ errors: detailErrors });
     }
-    if (!Array.isArray(body.nodes) || !Array.isArray(body.edges)) {
-        return response.status(400).json({ message: 'nodes and edges must be lists' });
+    const structureProblem = checkDialogueStructure(body.nodes, body.edges);
+    if (structureProblem) {
+        return response.status(400).json({ message: structureProblem });
     }
 
     const id = randomUUID();
@@ -88,8 +97,14 @@ async function postDialogue(request: Request, response: Response) {
                                                 item_blueprint, nodes, edges, created_at, updated_at)
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
+    let isCreated = false;
     try {
-        await withTransaction(async (connection) => {
+        isCreated = await withTransaction(async (connection) => {
+            // First, so a second create in this project waits here, then meets the UNIQUE key (see lockProject())
+            const projectExists = await lockProject(connection, project.id);
+            if (!projectExists) {
+                return false;
+            }
             await connection.query(insertQuery, [
                 id,
                 project.id,
@@ -104,12 +119,17 @@ async function postDialogue(request: Request, response: Response) {
                 now,
             ]);
             await addToProjectList(connection, project.id, 'dialogue_ids', id);
+            return true;
         });
     } catch (error) {
         if (isDuplicateKey(error)) {
             return response.status(409).json({ message: 'Another dialogue in this project already uses this ID' });
         }
         throw error;
+    }
+
+    if (!isCreated) {
+        return response.status(404).json({ message: 'Project not found' });
     }
 
     response.status(201).json(await findDialogue(project.id, id));
@@ -137,8 +157,9 @@ async function putDialogue(request: Request<{ id: string }>, response: Response)
     if (detailErrors.length > 0) {
         return response.status(400).json({ errors: detailErrors });
     }
-    if (!Array.isArray(body.nodes) || !Array.isArray(body.edges)) {
-        return response.status(400).json({ message: 'nodes and edges must be lists' });
+    const structureProblem = checkDialogueStructure(body.nodes, body.edges);
+    if (structureProblem) {
+        return response.status(400).json({ message: structureProblem });
     }
 
     const updateQuery = `UPDATE dialogues SET dialogue_key = ?, name = ?, description = ?, speaker_blueprint = ?,

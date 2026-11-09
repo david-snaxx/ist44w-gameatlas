@@ -1,11 +1,19 @@
 import express from 'express';
 import type { Request, Response } from 'express';
-import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
+import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { randomUUID } from 'node:crypto';
 import { db } from '../db.ts';
-import { addToProjectList, isDuplicateKey, openProject, removeFromProjectList, withTransaction } from '../projectAccess.ts';
+import {
+    addToProjectList,
+    isDuplicateKey,
+    lockProject,
+    openProject,
+    removeFromProjectList,
+    withTransaction,
+} from '../projectAccess.ts';
 import type { Asset } from '../types/asset.ts';
-import type { Blueprint } from '../types/blueprint.ts';
+import type { Blueprint, Field } from '../types/blueprint.ts';
+import { VECTOR_AXES } from '../../../frontend/src/schema/fieldTypes.js';
 import { validateAssetKey, validateValues } from '../../../frontend/src/schema/validation.js';
 import { referenceKeysFor, replaceReferences, toFormValues } from '../../../frontend/src/data/assetData.js';
 import { renameAssetInDialogue } from '../../../frontend/src/data/dialogueGraph.js';
@@ -84,8 +92,14 @@ async function postAsset(request: Request, response: Response) {
     const insertQuery = `INSERT INTO assets (id, project_id, blueprint_id, asset_key, schema_version, data, created_at, updated_at)
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
 
+    let isCreated = false;
     try {
-        await withTransaction(async (connection) => {
+        isCreated = await withTransaction(async (connection) => {
+            // First, so a second create in this project waits here, then meets the UNIQUE key (see lockProject())
+            const projectExists = await lockProject(connection, project.id);
+            if (!projectExists) {
+                return false;
+            }
             await connection.query(insertQuery, [
                 id,
                 project.id,
@@ -97,6 +111,7 @@ async function postAsset(request: Request, response: Response) {
                 now,
             ]);
             await addToProjectList(connection, project.id, 'asset_ids', id);
+            return true;
         });
     } catch (error) {
         if (isDuplicateKey(error)) {
@@ -105,16 +120,22 @@ async function postAsset(request: Request, response: Response) {
         throw error;
     }
 
+    if (!isCreated) {
+        return response.status(404).json({ message: 'Project not found' });
+    }
+
     response.status(201).json(await findAsset(project.id, id));
 }
 
 /**
  * PUT /assets/:id
- * Body: { projectId, key, data }. Stamps the asset with the blueprint's current version. A different `key`
- * renames it, and every link to it follows in the same transaction.
+ * Body: { projectId, key, data, updatedAt }. `updatedAt` is the asset's as the client loaded it: when the saved one
+ * is newer, someone else saved in between, and this save answers 409 instead of undoing their change. Stamps the
+ * asset with the blueprint's current version. A different `key` renames it, and every link to it follows in the
+ * same transaction.
  */
 async function putAsset(request: Request<{ id: string }>, response: Response) {
-    const { projectId, key, data } = request.body ?? {};
+    const { projectId, key, data, updatedAt } = request.body ?? {};
     const access = await openProject(request, projectId);
     if (!access.project) {
         return response.status(access.status).json({ message: access.message });
@@ -124,6 +145,10 @@ async function putAsset(request: Request<{ id: string }>, response: Response) {
     const existing = await findAsset(project.id, request.params.id);
     if (!existing) {
         return response.status(404).json({ message: 'Asset not found' });
+    }
+
+    if (typeof updatedAt !== 'string' || Number.isNaN(Date.parse(updatedAt))) {
+        return response.status(400).json({ message: "updatedAt must be the asset's updatedAt from when it was loaded" });
     }
 
     const blueprint = await findBlueprintRow(project.id, existing.schemaId);
@@ -144,19 +169,35 @@ async function putAsset(request: Request<{ id: string }>, response: Response) {
         return response.status(400).json({ errors: problems });
     }
 
-    const updateQuery = `UPDATE assets SET asset_key = ?, schema_version = ?, data = ?, updated_at = ? WHERE id = ?`;
+    // Always later than the saved time, even within one millisecond, so the copy this replaces can never match again
+    let newUpdatedAt = new Date();
+    const savedTime = new Date(existing.updatedAt).getTime();
+    if (newUpdatedAt.getTime() <= savedTime) {
+        newUpdatedAt = new Date(savedTime + 1);
+    }
+
+    // `AND updated_at = ?` makes the write itself the check: of two saves made from the same copy at once, MySQL
+    // lets only the first match, because the second waits for the first's lock and then sees its new time
+    const updateQuery = `UPDATE assets SET asset_key = ?, schema_version = ?, data = ?, updated_at = ?
+                         WHERE id = ? AND updated_at = ?`;
+    let isSaved = false;
     try {
-        await withTransaction(async (connection) => {
-            await connection.query(updateQuery, [
+        isSaved = await withTransaction(async (connection) => {
+            const [result] = await connection.query<ResultSetHeader>(updateQuery, [
                 key,
                 blueprint.version,
                 JSON.stringify(newData),
-                new Date(),
+                newUpdatedAt,
                 existing.id,
+                new Date(updatedAt),
             ]);
+            if (result.affectedRows === 0) {
+                return false;
+            }
             if (isRenamed) {
                 await renameLinksToAsset(connection, project.id, existing.id, blueprint.id, existing.key, key);
             }
+            return true;
         });
     } catch (error) {
         if (isDuplicateKey(error)) {
@@ -165,6 +206,9 @@ async function putAsset(request: Request<{ id: string }>, response: Response) {
         throw error;
     }
 
+    if (!isSaved) {
+        return response.status(409).json({ message: OUT_OF_DATE_MESSAGE });
+    }
     response.json(await findAsset(project.id, request.params.id));
 }
 
@@ -193,12 +237,23 @@ async function deleteAsset(request: Request<{ id: string }>, response: Response)
 // endregion
 
 // region Helpers
+/** The 409 answer to a save made from a copy that someone else has saved over since it was loaded. */
+const OUT_OF_DATE_MESSAGE =
+    "Someone else saved this asset after you opened it, so your changes weren't saved. Reload the page to see theirs.";
+
 /**
  * SQL columns of an {@link Asset}. `schemaId` comes from the joined blueprints table, and `key` needs backticks
  * because it's a MySQL keyword.
  */
 const ASSET_COLUMNS = `a.id, a.asset_key AS \`key\`, b.schema_key AS schemaId, a.schema_version AS schemaVersion,
                        a.data, a.created_at AS createdAt, a.updated_at AS updatedAt`;
+
+/** One thing wrong with an asset a client sent, as the API answers it in `errors`. */
+interface AssetProblem {
+    /** Where in `data` it is, like validateValues() writes it: "stats.strength", "tags.0", or "key" / "data". */
+    path: string;
+    message: string;
+}
 
 /** A blueprint as the asset routes need it: its row UUID plus what validation uses. */
 interface BlueprintRow {
@@ -252,8 +307,8 @@ async function validateAssetBody(
     key: unknown,
     data: unknown,
     currentAssetId: string | null,
-) {
-    const problems: { path: string; message: string }[] = [];
+): Promise<AssetProblem[]> {
+    const problems: AssetProblem[] = [];
 
     if (!isPlainObject(data)) {
         problems.push({ path: 'data', message: 'data must be an object' });
@@ -265,6 +320,9 @@ async function validateAssetBody(
     if (keyError) {
         problems.push({ path: 'key', message: keyError });
     }
+
+    // validateValues() only reads the blueprint's own properties, so anything else would be saved unchecked
+    findUnknownKeys(blueprint.fields, data, '', problems);
 
     // What links may point at: every asset in the project, with the one being updated under its new ID
     const blueprints = await findBlueprintsForLinks(projectId);
@@ -288,6 +346,62 @@ async function validateAssetBody(
     }
 
     return problems;
+}
+
+/**
+ * Adds a problem for every key in `data` that isn't one of `fields`' IDs, looking inside groups and vectors too
+ * (the only values that are objects), so nothing the blueprint doesn't describe is saved. `prefix` is the path of
+ * the group being checked, ending in a dot ('' at the top). A value of the wrong type is validateValues()'s job.
+ */
+function findUnknownKeys(fields: Field[], data: Record<string, unknown>, prefix: string, problems: AssetProblem[]) {
+    // A Map, not a plain object: looking up a key like "constructor" on {} finds its built-in function
+    const fieldsByKey = new Map<string, Field>();
+    for (const field of fields) {
+        fieldsByKey.set(field.key, field);
+    }
+
+    for (const key of Object.keys(data)) {
+        const path = prefix + key;
+        const field = fieldsByKey.get(key);
+        if (!field) {
+            problems.push({ path: path, message: `"${key}" isn't a property of this blueprint` });
+            continue;
+        }
+
+        const value = data[key];
+        if (field.type === 'object' && isPlainObject(value)) {
+            findUnknownKeys(field.fields ?? [], value, `${path}.`, problems);
+        }
+        if ((field.type === 'vector2' || field.type === 'vector3') && isPlainObject(value)) {
+            findUnknownAxes(field.type, value, path, problems);
+        }
+        if (field.type === 'list' && Array.isArray(value)) {
+            const itemType = field.itemType?.type;
+            if (itemType === 'vector2' || itemType === 'vector3') {
+                for (let index = 0; index < value.length; index++) {
+                    const item = value[index];
+                    if (isPlainObject(item)) {
+                        findUnknownAxes(itemType, item, `${path}.${index}`, problems);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Adds a problem for every key in a vector value other than its axes (x and y, plus z for a vector3). */
+function findUnknownAxes(
+    type: 'vector2' | 'vector3',
+    vector: Record<string, unknown>,
+    path: string,
+    problems: AssetProblem[],
+) {
+    const axes: string[] = VECTOR_AXES[type];
+    for (const key of Object.keys(vector)) {
+        if (!axes.includes(key)) {
+            problems.push({ path: path, message: `"${key}" isn't an axis of this vector` });
+        }
+    }
 }
 
 /** Every asset of one blueprint, as validateAssetKey() wants them: [{ id, key }]. */

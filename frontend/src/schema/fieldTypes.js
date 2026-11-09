@@ -1,3 +1,5 @@
+import { ownValue } from '../utils/ownValue.js'
+
 // Every property type a blueprint can use. `label` and `description` are what users see (STYLE-GUIDELINES §11).
 export const FIELD_TYPES = {
   string: { label: 'Short text', description: 'Names, titles and other single lines of text.' },
@@ -107,7 +109,7 @@ function defaultValues(fields) {
 // Short, readable type name for lists and badges, e.g. "List of whole number" or "Link to Entity"
 export function describeType(field, blueprintNames = {}) {
   if (field.type === 'list') {
-    const itemType = FIELD_TYPES[field.itemType?.type]
+    const itemType = ownValue(FIELD_TYPES, field.itemType?.type)
     if (!itemType) {
       return 'List'
     }
@@ -115,11 +117,11 @@ export function describeType(field, blueprintNames = {}) {
   }
 
   if (field.type === 'reference' && field.targetSchema) {
-    const blueprintName = blueprintNames[field.targetSchema] ?? field.targetSchema
+    const blueprintName = ownValue(blueprintNames, field.targetSchema) ?? field.targetSchema
     return `Link to ${blueprintName}`
   }
 
-  const type = FIELD_TYPES[field.type]
+  const type = ownValue(FIELD_TYPES, field.type)
   if (!type) {
     return field.type
   }

@@ -11,7 +11,7 @@
 
 import test, { before } from 'node:test'
 import assert from 'node:assert/strict'
-import { api, isServerUp, SERVER_DOWN_MESSAGE, TEST_PASSWORD, summarize } from './helpers.js'
+import { api, isServerUp, SERVER_DOWN_MESSAGE, TEST_PASSWORD, deleteAccount, summarize } from './helpers.js'
 
 let serverUp = false
 before(async () => {
@@ -32,7 +32,7 @@ test('signup rejects malformed emails with a 400', async (t) => {
         return
     }
 
-    const createdIds = []
+    const createdAccounts = []
     try {
         for (const testCase of CASES) {
             await t.test(`email ${testCase.label}`, async () => {
@@ -41,9 +41,9 @@ test('signup rejects malformed emails with a 400', async (t) => {
                 })
                 console.log(`Email ${testCase.label}: status ${result.status}.`)
 
-                // track anything that slipped through so cleanup can remove it
-                if (result.status === 201 && result.body?.id) {
-                    createdIds.push(result.body.id)
+                // track anything that slipped through so cleanup can log in as it and delete it
+                if (result.status === 201) {
+                    createdAccounts.push({ email: testCase.email, password: TEST_PASSWORD })
                 }
 
                 assert.equal(
@@ -54,12 +54,8 @@ test('signup rejects malformed emails with a 400', async (t) => {
             })
         }
     } finally {
-        for (const id of createdIds) {
-            try {
-                await api('DELETE', `/api/users/${id}`)
-            } catch {
-                // cleanup only
-            }
+        for (const account of createdAccounts) {
+            await deleteAccount(account)
         }
     }
 })

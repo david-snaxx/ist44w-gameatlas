@@ -8,9 +8,10 @@ import { signUp } from '../../api/users.js'
 import SignedOutLayout from './SignedOutLayout.jsx'
 import styles from './Login.module.css'
 
-// The same rules the backend keeps (validatePassword and validateDisplayName in routes/users.ts)
+// The same rules the backend keeps (validateEmail, validatePassword and validateDisplayName in routes/users.ts)
 const MIN_PASSWORD_LENGTH = 8
 const MAX_DISPLAY_NAME_LENGTH = 64
+const MAX_EMAIL_LENGTH = 254
 
 /** Making an account (/signup): email, password and a display name. */
 function SignUpPage() {
@@ -95,8 +96,16 @@ function findProblems(email, password, displayName) {
     problems.displayName = `Use ${MAX_DISPLAY_NAME_LENGTH} characters or fewer`
   }
 
-  if (email.trim() === '') {
+  // Trimmed, like the email that's sent
+  const trimmedEmail = email.trim()
+  if (trimmedEmail === '') {
     problems.email = 'Enter your email'
+  } else if (trimmedEmail.length > MAX_EMAIL_LENGTH) {
+    problems.email = `Use ${MAX_EMAIL_LENGTH} characters or fewer`
+  } else if (/\s/.test(trimmedEmail)) {
+    problems.email = 'Remove the spaces'
+  } else if (!hasAtAndDot(trimmedEmail)) {
+    problems.email = 'Enter an email like name@example.com'
   }
 
   if (password === '') {
@@ -106,6 +115,16 @@ function findProblems(email, password, displayName) {
   }
 
   return problems
+}
+
+/** True when the email has something before an @, then a dot with something on both sides of it (a@b.c). */
+function hasAtAndDot(email) {
+  const atIndex = email.indexOf('@')
+  const lastDotIndex = email.lastIndexOf('.')
+  const hasNameBeforeAt = atIndex > 0
+  const hasDotAfterAt = lastDotIndex > atIndex + 1
+  const hasTextAfterDot = lastDotIndex < email.length - 1
+  return hasNameBeforeAt && hasDotAfterAt && hasTextAfterDot
 }
 
 export default SignUpPage

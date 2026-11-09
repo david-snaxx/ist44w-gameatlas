@@ -62,7 +62,8 @@ CREATE TABLE IF NOT EXISTS assets (
     schema_version INT NOT NULL,
     data JSON NOT NULL,
     created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL,
+    -- To the millisecond: PUT /api/assets/{id} refuses a save made from an older copy by comparing it
+    updated_at DATETIME(3) NOT NULL,
     UNIQUE KEY asset_key_per_blueprint (blueprint_id, asset_key),
     FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE,
     -- Deleting a blueprint takes its assets with it

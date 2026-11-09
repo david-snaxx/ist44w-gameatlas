@@ -34,18 +34,20 @@ export async function createAsset(projectId, asset) {
 }
 
 /**
- * Updates an existing {@link Asset} in the database.
+ * Updates an existing {@link Asset} in the database. Fails with a 409 when someone else saved it after `updatedAt`.
  * @param projectId The {@link Project} this Asset belongs to.
  * @param assetId The Asset to update.
- * @param asset Takes the form { key, data } where:
+ * @param asset Takes the form { key, data, updatedAt } where:
  * - key: the Asset identifier, unique among its Blueprint's Assets
  * - data: the Asset's property values ({@link AssetData})
+ * - updatedAt: the Asset's `updatedAt` as it was loaded, so the server can refuse a save from an older copy
  */
 export async function updateAsset(projectId, assetId, asset) {
     const body = {
         projectId: projectId,
         key: asset.key,
-        data: asset.data
+        data: asset.data,
+        updatedAt: asset.updatedAt
     }
     const path = `/api/assets/${assetId}`
     return sendRequest('PUT', path, body)

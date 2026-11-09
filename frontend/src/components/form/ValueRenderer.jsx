@@ -1,5 +1,6 @@
 import { Link } from 'react-router'
 import { VECTOR_AXES } from '../../schema/fieldTypes.js'
+import { ownValue } from '../../utils/ownValue.js'
 
 /**
  * Shows saved values read-only, laid out by the blueprint's properties: the viewing counterpart of FormRenderer.
@@ -15,7 +16,7 @@ function ValueRenderer({ fields, data, resolveLink }) {
     if (!field.key) {
       continue
     }
-    const value = data?.[field.key]
+    const value = ownValue(data, field.key)
     rows.push(<ValueField key={field.key} field={field} value={value} resolveLink={resolveLink} />)
   }
   return <div>{rows}</div>

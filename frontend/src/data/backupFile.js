@@ -1,8 +1,8 @@
 import { findField, toDraft } from '../schema/blueprintDraft.js'
 import { FIELD_TYPES } from '../schema/fieldTypes.js'
-import { validateAssetKey, validateBlueprint, validateIdFormat } from '../schema/validation.js'
+import { checkBlueprintSize, validateAssetKey, validateBlueprint, validateIdFormat } from '../schema/validation.js'
 import { plural } from '../utils/plural.js'
-import { validateDialogueDetails } from './dialogueGraph.js'
+import { checkDialogueStructure, validateDialogueDetails } from './dialogueGraph.js'
 
 /*
  * The backup file: a project's contents exactly as saved, layouts included, for restoring GameAtlas (not for game
@@ -92,8 +92,7 @@ function isDamaged(file) {
       isObject(dialogue) &&
       typeof dialogue.id === 'string' &&
       typeof dialogue.key === 'string' &&
-      Array.isArray(dialogue.nodes) &&
-      Array.isArray(dialogue.edges)
+      checkDialogueStructure(dialogue.nodes, dialogue.edges) === null
     if (!looksValid) {
       return true
     }
@@ -142,6 +141,11 @@ export function checkContents(contents) {
 function checkBlueprints(blueprints) {
   for (let index = 0; index < blueprints.length; index++) {
     const blueprint = blueprints[index]
+    // First, because isReadableBlueprint() and the checks below go through every level of the properties
+    const sizeProblem = checkBlueprintSize(blueprint?.fields)
+    if (sizeProblem) {
+      return `${itemName('Blueprint', blueprint?.id, index)}: ${sizeProblem}`
+    }
     if (!isReadableBlueprint(blueprint)) {
       return `${itemName('Blueprint', blueprint?.id, index)} is damaged`
     }
@@ -200,7 +204,7 @@ function checkAssets(assets, blueprints) {
   return null
 }
 
-// Dialogues need a valid name and ID, and an ID no other dialogue in the set uses
+// Dialogues need a valid name and ID, an ID no other dialogue in the set uses, and steps and connections that can be read
 function checkDialogues(dialogues) {
   const earlierKeys = []
   for (let index = 0; index < dialogues.length; index++) {
@@ -216,6 +220,10 @@ function checkDialogues(dialogues) {
     }
     if (errors.key) {
       return `${name}: ${errors.key}`
+    }
+    const structureProblem = checkDialogueStructure(dialogue.nodes, dialogue.edges)
+    if (structureProblem) {
+      return `${name}: ${structureProblem}`
     }
     earlierKeys.push(dialogue.key)
   }

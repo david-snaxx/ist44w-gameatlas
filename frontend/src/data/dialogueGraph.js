@@ -1,5 +1,6 @@
 import { toSnakeCase } from '../schema/blueprintDraft.js'
 import { PROPERTY_KEY_PATTERN, validateIdFormat, validateName } from '../schema/validation.js'
+import { ownValue } from '../utils/ownValue.js'
 import { uniqueKey } from '../utils/uniqueKey.js'
 import { referenceKeysFor } from './assetData.js'
 
@@ -116,7 +117,7 @@ export function createDialogueGraph() {
 
 /** A short name for a node in problem lists, e.g. `Line “Ah, a traveler…”`. */
 export function nodeLabel(node) {
-  const typeLabel = NODE_TYPES[node.type]?.label ?? node.type
+  const typeLabel = ownValue(NODE_TYPES, node.type)?.label ?? node.type
 
   if (node.type === 'line') {
     const text = node.data.text?.trim()
@@ -280,6 +281,59 @@ function exportNode(node, edges) {
 
 // ---------- Validation ----------
 
+/**
+ * Checks that a dialogue's steps and connections can be read at all: every node is an object with a unique,
+ * non-empty text ID and a known type, and every edge is an object that leaves from and leads to one of those nodes.
+ * Returns the first problem's message, or null. An unfinished tree passes; validateDialogueGraph() reports that.
+ */
+export function checkDialogueStructure(nodes, edges) {
+  if (!Array.isArray(nodes) || !Array.isArray(edges)) {
+    return 'nodes and edges must be lists'
+  }
+
+  const nodeTypes = Object.keys(NODE_TYPES)
+  // A Set is like Java's HashSet: has() answers without going through every ID
+  const nodeIds = new Set()
+  for (let index = 0; index < nodes.length; index++) {
+    const node = nodes[index]
+    const number = index + 1
+    if (!isObject(node)) {
+      return `Step ${number} is damaged`
+    }
+    if (typeof node.id !== 'string' || node.id === '') {
+      return `Step ${number} has no ID`
+    }
+    if (!nodeTypes.includes(node.type)) {
+      return `Step "${node.id}" has an unknown type`
+    }
+    if (nodeIds.has(node.id)) {
+      return `Two steps use the ID "${node.id}"`
+    }
+    nodeIds.add(node.id)
+  }
+
+  for (let index = 0; index < edges.length; index++) {
+    const edge = edges[index]
+    const number = index + 1
+    if (!isObject(edge)) {
+      return `Connection ${number} is damaged`
+    }
+    if (!nodeIds.has(edge.source)) {
+      return `Connection ${number} leaves from a step that isn't in the dialogue`
+    }
+    if (!nodeIds.has(edge.target)) {
+      return `Connection ${number} leads to a step that isn't in the dialogue`
+    }
+  }
+
+  return null
+}
+
+// True for a plain object like { … } (not null, not an array)
+function isObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
 /** Name and ID checks. details: { name, key }. Returns { name?, key? }. */
 export function validateDialogueDetails(details, otherKeys) {
   const errors = {}
@@ -354,8 +408,8 @@ export function validateDialogueGraph(dialogue, context = {}) {
 
   const start = nodes.find((node) => node.type === 'start')
   const reachableIds = findReachableIds(start, edges)
-  const speakerKeys = assetKeys[dialogue.speakerBlueprint] ?? []
-  const itemKeys = assetKeys[dialogue.itemBlueprint] ?? []
+  const speakerKeys = ownValue(assetKeys, dialogue.speakerBlueprint) ?? []
+  const itemKeys = ownValue(assetKeys, dialogue.itemBlueprint) ?? []
 
   for (const node of nodes) {
     const data = node.data ?? {}

@@ -3,55 +3,73 @@ import type { Request, Response } from 'express';
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
+import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
 import { db } from '../db.ts';
 import { withTransaction } from '../projectAccess.ts';
 
 // region Express Routing
+// The limiters and their settings sit above the router because a const, unlike a function, can't be used before its line
+
+/** How long the login limiters remember logins, counted from the first one in each count. */
+const LOGIN_WINDOW_MINUTES = 10;
+/** Successful logins allowed for one account from one IP address within the window. Each one starts a session. */
+const MAX_SUCCESSFUL_LOGINS = 10;
+/** Failed logins allowed for one account from one IP address within the window. */
+const MAX_FAILED_LOGINS = 10;
+
+/**
+ * Answers POST /login with 429 once one IP address has logged into one account MAX_SUCCESSFUL_LOGINS times within
+ * the window. A login still being checked counts until it fails, so no more than that many run at once either.
+ */
+const limitSuccessfulLogins = rateLimit({
+    windowMs: LOGIN_WINDOW_MINUTES * 60 * 1000,
+    limit: MAX_SUCCESSFUL_LOGINS,
+    skipFailedRequests: true,
+    keyGenerator: loginKey,
+    message: { message: `Too many logins for this account. Try again in ${LOGIN_WINDOW_MINUTES} minutes.` },
+    identifier: 'logins', // its name in the RateLimit headers, next to the other limiter's
+    standardHeaders: 'draft-8', // a RateLimit header and Retry-After, instead of the older X-RateLimit-* ones
+    legacyHeaders: false,
+});
+
+/**
+ * Answers POST /login with 429 once one IP address has failed MAX_FAILED_LOGINS times on one account within the
+ * window. Each attempt counts when it arrives and stops counting if it succeeds, so a burst is cut off too.
+ */
+const limitFailedLogins = rateLimit({
+    windowMs: LOGIN_WINDOW_MINUTES * 60 * 1000,
+    limit: MAX_FAILED_LOGINS,
+    skipSuccessfulRequests: true,
+    keyGenerator: loginKey,
+    message: { message: `Too many failed logins. Try again in ${LOGIN_WINDOW_MINUTES} minutes.` },
+    identifier: 'failed-logins',
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+});
+
 export const usersRouter = express.Router();
-usersRouter.get('/', getUserRoot);
+usersRouter.post('/', postUser);
 usersRouter.get('/me', getMe);
 usersRouter.put('/me', putMe);
 usersRouter.delete('/me', deleteMe);
-usersRouter.post('/login', postLogin);
+// limitSuccessfulLogins goes first, so a refusal from it isn't counted as a failed login by limitFailedLogins
+usersRouter.post('/login', limitSuccessfulLogins, limitFailedLogins, postLogin);
 usersRouter.post('/logout', postLogout);
-usersRouter.get('/:id', getUser);
-usersRouter.post('/', postUser);
-usersRouter.put('/:id', putUser);
-usersRouter.delete('/:id', deleteUser);
 // endregion
 
 // region Endpoints
 /**
- * GET /users
- * For testing only: shows every user's email to anyone. Remove before deploying.
- */
-async function getUserRoot(request: Request, response: Response) {
-    const selectQuery = `SELECT ${PUBLIC_COLUMNS} FROM users`
-    const [rows] = await db.query<RowDataPacket[]>(selectQuery);
-    response.json(rows);
-}
-
-/**
- * GET /users/:id
- */
-async function getUser(request: Request<{ id: string }>, response: Response) {
-    const user = await getUserById(request.params.id);
-    if (!user) {
-        return response.status(404).json({ message: 'User not found' });
-    }
-    response.json(user);
-}
-
-/**
  * POST /users
+ * Signs up a new user. Starts no session: the user logs in afterwards.
  */
 async function postUser(request: Request, response: Response) {
     const { email, password, displayName } = request.body ?? {};
     if (!email || !password || !displayName) {
         return response.status(400).json({ message: 'email, password and displayName are required' });
     }
-    if (typeof email !== 'string') {
-        return response.status(400).json({ message: 'email must be a string' });
+    const emailError = validateEmail(email);
+    if (emailError) {
+        return response.status(400).json({ message: emailError });
     }
     const passwordError = validatePassword(password);
     if (passwordError) {
@@ -76,45 +94,6 @@ async function postUser(request: Request, response: Response) {
     }
 
     response.status(201).json(await getUserById(id));
-}
-
-/**
- * PUT /users/:id
- */
-async function putUser(request: Request<{ id: string }>, response: Response) {
-    const { email, displayName } = request.body ?? {};
-    const detailsError = validateDetails(email, displayName);
-    if (detailsError) {
-        return response.status(400).json({ message: detailsError });
-    }
-
-    let found = false;
-    try {
-        found = await updateDetails(request.params.id, email, displayName);
-    } catch (error) {
-        if (isDuplicateEmail(error)) {
-            return response.status(409).json({ message: 'That email is already registered' });
-        }
-        throw error;
-    }
-
-    if (!found) {
-        return response.status(404).json({ message: 'User not found' });
-    }
-    response.json(await getUserById(request.params.id));
-}
-
-/**
- * DELETE /users/:id
- */
-async function deleteUser(request: Request<{ id: string }>, response: Response) {
-    const deleteQuery = `DELETE FROM users WHERE id = ?`;
-    const [result] = await db.query<ResultSetHeader>(deleteQuery, [request.params.id]);
-
-    if (result.affectedRows === 0) {
-        return response.status(404).json({ message: 'User not found' });
-    }
-    response.status(204).end();
 }
 
 /**
@@ -213,7 +192,7 @@ async function deleteMe(request: Request, response: Response) {
 
 /**
  * POST /users/login
- * Checks the email and password, then starts a fresh session holding the user's ID.
+ * Checks the email and password, then starts a fresh session holding the user's ID. The two login limiters run first.
  */
 async function postLogin(request: Request, response: Response) {
     const { email, password } = request.body ?? {};
@@ -256,6 +235,29 @@ async function postLogout(request: Request, response: Response) {
 // endregion
 
 // region Helpers
+/**
+ * What the login limiters count a login attempt under: the caller's IP address plus the account the email logs into
+ * (or the email itself when no account has it). Keyed per account, so one attacker can't lock everyone out.
+ */
+async function loginKey(request: Request): Promise<string> {
+    // ipKeyGenerator groups an IPv6 address with its neighbours, which one attacker can easily switch between
+    const ip = ipKeyGenerator(request.ip ?? '');
+    const email = request.body?.email;
+    if (typeof email !== 'string') {
+        return ip;
+    }
+
+    // MySQL matches emails ignoring case and accents, so "Victim@…" and "vìctim@…" log into the same account.
+    // Keying on the account it finds stops each spelling from getting a fresh count.
+    const selectQuery = `SELECT id FROM users WHERE email = ?`;
+    const [rows] = await db.query<RowDataPacket[]>(selectQuery, [email]);
+    const row = rows[0];
+    if (!row) {
+        return `${ip} ${email}`;
+    }
+    return `${ip} ${row.id}`;
+}
+
 /** express-session's default name for the session cookie. */
 const SESSION_COOKIE_NAME = 'connect.sid';
 
@@ -287,6 +289,35 @@ function destroySession(request: Request): Promise<void> {
 
 const MIN_PASSWORD_LENGTH = 8;
 const MAX_DISPLAY_NAME_LENGTH = 64;
+/** The longest email users.email (VARCHAR(254)) holds, which is also the longest an email address can be. */
+const MAX_EMAIL_LENGTH = 254;
+
+/**
+ * What's wrong with an email, or null when it's fine: at most MAX_EMAIL_LENGTH characters, no spaces, and something
+ * before an @ followed by a dot with something on both sides of it (a@b.c is the shortest that passes).
+ */
+function validateEmail(email: unknown): string | null {
+    if (typeof email !== 'string') {
+        return 'email must be a string';
+    }
+    if (email.length > MAX_EMAIL_LENGTH) {
+        return `email must be ${MAX_EMAIL_LENGTH} characters or fewer`;
+    }
+    // \s also catches tabs and line breaks
+    if (/\s/.test(email)) {
+        return "email can't contain spaces";
+    }
+
+    const atIndex = email.indexOf('@');
+    const lastDotIndex = email.lastIndexOf('.');
+    const hasNameBeforeAt = atIndex > 0;
+    const hasDotAfterAt = lastDotIndex > atIndex + 1;
+    const hasTextAfterDot = lastDotIndex < email.length - 1;
+    if (!hasNameBeforeAt || !hasDotAfterAt || !hasTextAfterDot) {
+        return 'email needs an @ and a dot, like name@example.com';
+    }
+    return null;
+}
 
 /** What's wrong with a password, or null when it's fine. */
 function validatePassword(password: unknown): string | null {
@@ -317,13 +348,14 @@ function validateDisplayName(displayName: unknown): string | null {
     return null;
 }
 
-/** What's wrong with the email and display name sent to a PUT, or null when both are fine. */
+/** What's wrong with the email and display name sent to PUT /me, or null when both are fine. */
 function validateDetails(email: unknown, displayName: unknown): string | null {
     if (!email || !displayName) {
         return 'email and displayName are required';
     }
-    if (typeof email !== 'string') {
-        return 'email must be a string';
+    const emailError = validateEmail(email);
+    if (emailError) {
+        return emailError;
     }
     return validateDisplayName(displayName);
 }

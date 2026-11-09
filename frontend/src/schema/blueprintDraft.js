@@ -1,5 +1,7 @@
 import { uniqueKey } from '../utils/uniqueKey.js'
 import { FIELD_TYPES, supportsRequired, TYPE_SETTINGS } from './fieldTypes.js'
+import { checkBlueprintSize } from './validation.js'
+import { ownValue } from '../utils/ownValue.js'
 
 /*
  * A blueprint has two shapes:
@@ -140,7 +142,7 @@ function cleanField(field, isItemType) {
     }
   }
 
-  const settings = TYPE_SETTINGS[field.type] ?? []
+  const settings = ownValue(TYPE_SETTINGS, field.type) ?? []
   for (const setting of settings) {
     const value = field[setting]
 
@@ -458,6 +460,12 @@ export function parseBlueprintFile(text) {
     return { error: "This file isn't a GameAtlas blueprint." }
   }
 
+  // Before findUnknownType() and the editor, which go through every level of the properties
+  const sizeProblem = checkBlueprintSize(data.fields)
+  if (sizeProblem) {
+    return { error: `This blueprint is too big for GameAtlas. ${sizeProblem}.` }
+  }
+
   const unknownType = findUnknownType(data.fields)
   if (unknownType !== null) {
     return { error: `This blueprint uses a property type GameAtlas doesn't know: "${unknownType}".` }
@@ -477,10 +485,10 @@ export function parseBlueprintFile(text) {
 // The first property type (at any depth) that GameAtlas doesn't know, or null if they're all known
 function findUnknownType(fields) {
   for (const field of fields) {
-    if (!field || !FIELD_TYPES[field.type]) {
+    if (!field || !ownValue(FIELD_TYPES, field.type)) {
       return String(field?.type)
     }
-    if (field.type === 'list' && field.itemType && !FIELD_TYPES[field.itemType.type]) {
+    if (field.type === 'list' && field.itemType && !ownValue(FIELD_TYPES, field.itemType.type)) {
       return String(field.itemType.type)
     }
     if (field.type === 'object') {

@@ -6,12 +6,17 @@ import { db } from '../db.ts';
 import {
     addToProjectList,
     isDuplicateKey,
+    lockProject,
     openProject,
     removeFromProjectList,
     withTransaction,
 } from '../projectAccess.ts';
 import type { Blueprint } from '../types/blueprint.ts';
-import { validateBlueprintDetails, validateFieldDefinition } from '../../../frontend/src/schema/validation.js';
+import {
+    checkBlueprintSize,
+    validateBlueprintDetails,
+    validateFieldDefinition,
+} from '../../../frontend/src/schema/validation.js';
 import {
     renameBlueprintLinks,
     toDefinition,
@@ -68,7 +73,8 @@ async function getBlueprint(request: Request<{ id: string }>, response: Response
 
 /**
  * POST /blueprints
- * Body: { projectId, id, name, description?, fields }. A new blueprint always starts at version 1.
+ * Body: { projectId, id, name, description?, fields }. A new blueprint always starts at version 1. Too many
+ * properties, or groups nested too deep, are refused before anything else reads them (checkBlueprintSize()).
  */
 async function postBlueprint(request: Request, response: Response) {
     const { projectId, id, name, description, fields } = request.body ?? {};
@@ -77,6 +83,11 @@ async function postBlueprint(request: Request, response: Response) {
         return response.status(access.status).json({ message: access.message });
     }
     const project = access.project;
+
+    const sizeProblem = checkBlueprintSize(fields);
+    if (sizeProblem) {
+        return response.status(400).json({ errors: [{ path: 'fields', message: sizeProblem }] });
+    }
 
     const takenIds = await findBlueprintIds(project.id, null);
     const problems = validateBlueprintBody({ id: id, name: name, description: description, fields: fields }, takenIds);
@@ -91,8 +102,14 @@ async function postBlueprint(request: Request, response: Response) {
     const insertQuery = `INSERT INTO blueprints (id, project_id, schema_key, name, description, kind, version, fields, created_at, updated_at)
                          VALUES (?, ?, ?, ?, ?, 'form', 1, ?, ?, ?)`;
 
+    let isCreated = false;
     try {
-        await withTransaction(async (connection) => {
+        isCreated = await withTransaction(async (connection) => {
+            // First, so a second create in this project waits here, then meets the UNIQUE key (see lockProject())
+            const projectExists = await lockProject(connection, project.id);
+            if (!projectExists) {
+                return false;
+            }
             await connection.query(insertQuery, [
                 rowId,
                 project.id,
@@ -104,12 +121,17 @@ async function postBlueprint(request: Request, response: Response) {
                 now,
             ]);
             await addToProjectList(connection, project.id, 'blueprint_ids', rowId);
+            return true;
         });
     } catch (error) {
         if (isDuplicateKey(error)) {
             return response.status(409).json({ message: 'Another blueprint in this project already uses this ID' });
         }
         throw error;
+    }
+
+    if (!isCreated) {
+        return response.status(404).json({ message: 'Project not found' });
     }
 
     response.status(201).json(await findBlueprint(project.id, blueprint.id));
@@ -127,6 +149,12 @@ async function putBlueprint(request: Request<{ id: string }>, response: Response
     }
     const project = access.project;
     const currentId = request.params.id;
+
+    // Before renameBlueprintLinks() below, which goes through every level of the properties
+    const sizeProblem = checkBlueprintSize(fields);
+    if (sizeProblem) {
+        return response.status(400).json({ errors: [{ path: 'fields', message: sizeProblem }] });
+    }
 
     // leaving id out keeps the blueprint's current ID
     let newId = id;

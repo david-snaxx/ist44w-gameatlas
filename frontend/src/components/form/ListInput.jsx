@@ -1,5 +1,6 @@
 import { Plus, X } from 'lucide-react'
 import { defaultValue } from '../../schema/fieldTypes.js'
+import { ownValue } from '../../utils/ownValue.js'
 import Button from '../Button/Button.jsx'
 import FieldInput from './FieldInput.jsx'
 
@@ -58,7 +59,7 @@ function ListInput({ field, path, items, onChange, errors, referenceOptions }) {
 
 /** One item: its input and a remove button, with the item's error (if any) underneath. */
 function ListItem({ index, itemField, path, value, errors, referenceOptions, onChange, onRemove }) {
-  const error = errors[path]
+  const error = ownValue(errors, path)
 
   function handleChange(nextValue) {
     onChange(index, nextValue)

@@ -347,6 +347,7 @@ The first real page (`pages/Blueprints/`) sets the pattern for editor pages:
 - **Editing happens in the side panel** with stacked labels. The ID follows the label (camelCase) until edited. Errors appear once a setting is touched, or for everything after "Add property" / "Apply changes" is clicked.
 - **Pane footer:** Save (primary), Discard changes (disabled when nothing changed), and Delete (danger, pushed right, behind a confirmation that mentions blueprints linking to it).
 - **Every save asks first.** Once the blueprint has no problems, Save opens a `ConfirmDialog` with what the change does to the blueprint's assets: “Save changes to "{name}"?” (or "Save this new blueprint?") and a one-line summary ("Affected: 2 of its 4 assets…", or that nothing is affected and why). Under it, one native `<details>` group per effect ("N assets will lose values", "…will have values converted to a new type", "…will get new problems"), each listing the assets by name with a muted line per value ("Damage: 12"). A group of more than five assets starts folded, and the report scrolls inside the dialog (`ChangeReport.jsx`). The buttons are **Confirm change** (primary, save icon) and **Cancel** (danger, by user request); nothing is sent until Confirm change. Save and delete wait for the server: the buttons are disabled meanwhile, success is a success toast, and a refusal is an error toast in the server's words with the builder left as it was. The status bar's version is the server's.
+- **Too big:** more than 1,000 properties, or groups more than 10 levels deep, shows as the blueprint-wide message under the property list after Save is clicked, like "Add at least one property" (`checkBlueprintSize()`).
 - **Removing a property** is instant, with an Undo toast rather than a confirmation (nothing is saved until Save).
 - **Status bar:** "Unsaved changes", "Saved · version N", or "N problems" after a failed save.
 - **Leaving with unsaved changes** asks "Discard unsaved changes?"; closing the tab shows the browser's own warning.
@@ -379,6 +380,7 @@ The first real page (`pages/Blueprints/`) sets the pattern for editor pages:
 - **Links** list the target blueprint's assets by name. With no assets, the dropdown is disabled and reads "No assets to link to yet".
 - **Status bar:** "Unsaved changes", "Saved {date}", "Not saved yet", or "N problems" after a failed save.
 - Renaming an asset's ID updates links to it and says so in the save toast. Deleting mentions how many assets link to it.
+- **Someone else saved first:** a save from a copy that another tab or person has saved over since it was opened is refused. The error toast says so ("…your changes weren't saved. Reload the page to see theirs."), and the edits stay in the form.
 
 ### 7.13 Page pattern: home dashboard
 `pages/Dashboard/`, at `/`. It's an overview inside `AppShell`. The future login page will be a separate full-screen page outside `AppShell` with its own look, so the two stay visually distinct.
@@ -420,11 +422,13 @@ status bar — just one centred column on an empty screen, over the usual backgr
 - **Two buttons of equal width, side by side**, in a 1fr 1fr grid: the action (primary) on the left and the
   way to the other page (secondary) on the right.
 - **Both kinds of message are shown.** What the person can see for themselves is checked before anything is
-  sent and appears under its own box as a `field-error` ("Enter your email", "Use at least 8 characters").
+  sent and appears under its own box as a `field-error` ("Enter your email", "Enter an email like name@example.com",
+  "Use at least 8 characters").
   What only the server knows comes back as an **error toast** in the server's own words ("Wrong email or
-  password", "That email is already registered"), which stays until dismissed.
-- The client-side rules are copies of the backend's (`validatePassword` and `validateDisplayName` in
-  `routes/users.ts`), kept only so the answer is instant. The backend is still the one that decides.
+  password", "Too many failed logins. Try again in 10 minutes.", "That email is already registered"), which stays
+  until dismissed.
+- The client-side rules are copies of the backend's (`validateEmail`, `validatePassword` and
+  `validateDisplayName` in `routes/users.ts`), kept only so the answer is instant. The backend is still the one that decides.
 - Signing up does **not** log anyone in, because `POST /api/users` starts no session. On success the person is
   sent to `/login` with the email already filled in, through navigation state.
 

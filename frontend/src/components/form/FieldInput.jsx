@@ -1,4 +1,5 @@
 import { VECTOR_AXES } from '../../schema/fieldTypes.js'
+import { ownValue } from '../../utils/ownValue.js'
 import Checkbox from './Checkbox.jsx'
 import ListInput from './ListInput.jsx'
 import NumberInput from './NumberInput.jsx'
@@ -53,7 +54,7 @@ function FieldInput({ field, path, value, onChange, errors, referenceOptions = {
       return <VectorInput id={id} axes={VECTOR_AXES[field.type]} value={value} onChange={onChange} />
 
     case 'reference': {
-      const options = referenceOptions[field.targetSchema] ?? []
+      const options = ownValue(referenceOptions, field.targetSchema) ?? []
       const hasOptions = options.length > 0
       let placeholder = 'No assets to link to yet'
       if (hasOptions) {

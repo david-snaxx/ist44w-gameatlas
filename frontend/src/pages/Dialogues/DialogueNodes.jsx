@@ -25,7 +25,7 @@ import styles from './DialogueNodes.module.css'
 function NodeShell({ id, type, selected, hasInput = true, output, children }) {
   const { problemsByNode } = useDialogueEditor()
   const { deleteElements } = useReactFlow()
-  const problems = problemsByNode[id] ?? []
+  const problems = problemsByNode.get(id) ?? []
   const Icon = NODE_ICONS[type]
   const label = NODE_TYPES[type].label
 

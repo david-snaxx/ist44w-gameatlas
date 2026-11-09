@@ -87,8 +87,9 @@ async function load(projectId) {
 }
 
 /**
- * Saves { id?, key, schemaId, data } (no `id` for a new asset) and waits for the server, whose answer replaces it in
- * the list. A rename reloads the list, since the server also moved links in other assets. Answers { data } or { error }.
+ * Saves { id?, key, schemaId, data, updatedAt? } (no `id` for a new asset; a saved one sends the `updatedAt` it was
+ * loaded with) and waits for the server, whose answer replaces it in the list. A rename reloads the list, since the
+ * server also moved links in other assets. Answers { data } or { error }.
  */
 export async function saveAsset(asset) {
   const projectId = cache.projectId

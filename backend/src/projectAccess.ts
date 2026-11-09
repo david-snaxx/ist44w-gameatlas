@@ -53,6 +53,20 @@ export async function findProject(id: string, connection?: PoolConnection): Prom
     return rows[0] as Project | undefined;
 }
 
+/**
+ * Locks a project's row until the caller's transaction ends (`SELECT … FOR UPDATE`), so two writes to one project
+ * take turns. Call it first: an insert takes a shared lock on the project row for its foreign key, so two creates
+ * at once would each hold one and then deadlock updating the project's ID list. False when the project is gone.
+ */
+export async function lockProject(connection: PoolConnection, projectId: string): Promise<boolean> {
+    const selectQuery = `SELECT id
+                         FROM projects
+                         WHERE id = ?
+                         FOR UPDATE`;
+    const [rows] = await connection.query<RowDataPacket[]>(selectQuery, [projectId]);
+    return rows.length > 0;
+}
+
 /** Runs `work` in a transaction: everything in it is saved, or nothing is. */
 export async function withTransaction<T>(work: (connection: PoolConnection) => Promise<T>): Promise<T> {
     const connection = await db.getConnection();

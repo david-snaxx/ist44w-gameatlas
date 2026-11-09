@@ -1,6 +1,7 @@
 import { toSnakeCase } from '../schema/blueprintDraft.js'
 import { defaultValue, describeType, VECTOR_AXES } from '../schema/fieldTypes.js'
 import { validateValues } from '../schema/validation.js'
+import { ownValue } from '../utils/ownValue.js'
 import { uniqueKey } from '../utils/uniqueKey.js'
 
 /*
@@ -67,7 +68,7 @@ export function toFormValues(fields, data) {
   const values = {}
   for (const field of fields) {
     if (field.key) {
-      values[field.key] = toFormValue(field, source[field.key])
+      values[field.key] = toFormValue(field, ownValue(source, field.key))
     }
   }
   return values
@@ -132,7 +133,7 @@ export function toData(fields, values = {}) {
   const data = {}
   for (const field of fields) {
     if (field.key) {
-      data[field.key] = toDataValue(field, values[field.key])
+      data[field.key] = toDataValue(field, ownValue(values, field.key))
     }
   }
   return data
@@ -186,7 +187,7 @@ export function assetLabel(asset, blueprint) {
     return asset.key
   }
 
-  const value = asset.data?.[key]
+  const value = ownValue(asset.data, key)
   if (typeof value === 'string' && value.trim()) {
     return value.trim()
   }
@@ -283,7 +284,7 @@ export function describeBlueprintChanges(previousBlueprint, nextBlueprint, bluep
     const after = findAssetProblems(asset, nextBlueprint, referenceKeys)
     const problems = []
     for (const path of Object.keys(after)) {
-      if (!before[path]) {
+      if (!ownValue(before, path)) {
         problems.push(`${labelForPath(nextBlueprint.fields, path)}: ${after[path]}`)
       }
     }
@@ -326,7 +327,7 @@ function describeLostValues(data, previousFields, nextFields, previousTopFields)
   const reportedPaths = []
 
   for (const path of Object.keys(previousFields)) {
-    if (nextFields[path]) {
+    if (ownValue(nextFields, path)) {
       continue
     }
     const insideReported = reportedPaths.some((reported) => path.startsWith(`${reported}.`))
@@ -348,7 +349,7 @@ function describeChangedValues(data, nextData, previousFields, nextFields, nextT
 
   for (const path of Object.keys(previousFields)) {
     const previousField = previousFields[path]
-    const nextField = nextFields[path]
+    const nextField = ownValue(nextFields, path)
     if (!nextField) {
       continue
     }
@@ -376,7 +377,7 @@ function valueAtPath(data, path) {
     if (value === null || typeof value !== 'object') {
       return undefined
     }
-    value = value[part]
+    value = ownValue(value, part)
   }
   return value
 }
