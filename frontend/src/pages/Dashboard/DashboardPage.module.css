@@ -90,15 +90,8 @@
   border-top: 1px solid var(--color-border);
 }
 
-.footerLink {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  font-size: var(--text-sm);
-  text-decoration: none;
-}
-
-.blueprintLink {
+/* One project's row inside a card: its name, its count and an arrow */
+.countLink {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -109,11 +102,11 @@
   text-decoration: none;
 }
 
-.blueprintLink:hover {
+.countLink:hover {
   background: var(--color-hover-overlay);
 }
 
-.blueprintName {
+.countLabel {
   flex: 1;
 }
 

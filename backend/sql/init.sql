@@ -1,12 +1,11 @@
--- Creates the GameAtlas database and the user the app logs in as. Run this once, as root:
---   "C:/Program Files/MySQL/MySQL Server 8.4/bin/mysql.exe" -u root -p < backend/sql/init.sql
--- mysql asks for the root password, so it never has to be typed into a file or a command.
+-- Creates the GameAtlas database and the user the app logs in as. Run this once, as root, from the project folder
+-- (mysql asks for the root password), then tables.sql:
+--   mysql -u root -p -e "source backend/sql/init.sql"
+--   mysql -u root -p gameatlas -e "source backend/sql/tables.sql"
 --
--- Replace PUT_THE_PASSWORD_FROM_backend/.env_HERE with the DB_PASSWORD value in backend/.env
--- (that file is gitignored, which is why the real password isn't written here).
---
--- Then create the tables:
---   "C:/Program Files/MySQL/MySQL Server 8.4/bin/mysql.exe" -u gameatlas -p gameatlas < backend/sql/tables.sql
+-- The user's password is the local-only default in backend/src/config.ts, so the app needs no .env to log in.
+-- It only works from the same computer ('gameatlas'@'localhost'). It meets MySQL's password-strength check in
+-- case that's turned on.
 
 CREATE DATABASE IF NOT EXISTS gameatlas
     CHARACTER SET utf8mb4
@@ -14,7 +13,7 @@ CREATE DATABASE IF NOT EXISTS gameatlas
 
 -- MySQL 8.4 removed mysql_native_password, so this uses the default caching_sha2_password,
 -- which mysql2 (the driver the backend uses) supports.
-CREATE USER IF NOT EXISTS 'gameatlas'@'localhost' IDENTIFIED BY 'PUT_THE_PASSWORD_FROM_backend/.env_HERE';
+CREATE USER IF NOT EXISTS 'gameatlas'@'localhost' IDENTIFIED BY 'GameAtlas-local-1';
 
 -- Enough to run the app and to create or change its tables. No rights over any other database.
 GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, INDEX, ALTER, REFERENCES

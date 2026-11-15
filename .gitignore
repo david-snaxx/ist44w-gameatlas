@@ -9,6 +9,8 @@ lerna-debug.log*
 
 node_modules
 dist
+# Secrets for docker-compose.yml on a public server (backend/.env has its own .gitignore)
+/.env
 dist-ssr
 *.local
 /docs

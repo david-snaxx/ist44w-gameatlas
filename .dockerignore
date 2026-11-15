@@ -1,0 +1,10 @@
+# Kept out of the Docker image: installed packages and builds (the image makes its own), and local settings
+**/node_modules
+frontend/dist
+backend/.env
+.env
+.git
+.idea
+.claude
+docs
+CLAUDE.md

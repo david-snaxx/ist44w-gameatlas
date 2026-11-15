@@ -1,0 +1,37 @@
+# Runs GameAtlas with its own MySQL database: `docker compose up --build`, then open http://localhost:3000.
+# Everything is local only. The database's files live in the `gameatlas-data` volume, so they survive restarts.
+services:
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+      MYSQL_DATABASE: gameatlas
+      MYSQL_USER: gameatlas
+      # The same local-only password as backend/src/config.ts's default
+      MYSQL_PASSWORD: GameAtlas-local-1
+    volumes:
+      # MySQL runs this once, the first time it starts with an empty database
+      - ./backend/sql/tables.sql:/docker-entrypoint-initdb.d/tables.sql:ro
+      - gameatlas-data:/var/lib/mysql
+    healthcheck:
+      # Over TCP, so it only passes once the real server is up, not the temporary one MySQL uses for tables.sql
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 3s
+      timeout: 5s
+      retries: 60
+
+  app:
+    build: .
+    environment:
+      DB_HOST: db
+      # From a .env file next to this one, which only a public server needs (see the README). Without it this is
+      # empty, and src/config.ts uses its local-only default.
+      SESSION_SECRET: ${SESSION_SECRET:-}
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  gameatlas-data:

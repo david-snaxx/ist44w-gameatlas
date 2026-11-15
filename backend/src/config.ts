@@ -20,10 +20,16 @@ function loadEnvFile() {
 
 loadEnvFile()
 
-/** A setting from the environment, or `fallback` when it isn't set. */
+/**
+ * The password backend/sql/init.sql gives the app's MySQL user, so a fresh clone runs without a .env. Local only:
+ * that user can only log in from the same computer.
+ */
+const LOCAL_DB_PASSWORD = 'GameAtlas-local-1'
+
+/** A setting from the environment, or `fallback` when it isn't set or is empty (as in a copied .env.example). */
 function setting(name: string, fallback: string): string {
     const value = process.env[name]
-    if (value === undefined) {
+    if (value === undefined || value === '') {
         return fallback
     }
     return value
@@ -39,6 +45,6 @@ export const config = {
         port: Number(setting('DB_PORT', '3306')),
         database: setting('DB_NAME', 'gameatlas'),
         user: setting('DB_USER', 'gameatlas'),
-        password: setting('DB_PASSWORD', ''),
+        password: setting('DB_PASSWORD', LOCAL_DB_PASSWORD),
     },
 }

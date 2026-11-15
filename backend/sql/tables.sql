@@ -1,5 +1,5 @@
--- GameAtlas tables (PLAN.md §5.6). Run once against the `gameatlas` database:
---   mysql -u gameatlas -p gameatlas < backend/sql/tables.sql
+-- GameAtlas tables (PLAN.md §5.6). Run once against the `gameatlas` database, after init.sql:
+--   mysql -u root -p gameatlas -e "source backend/sql/tables.sql"
 --
 -- `users` already exists and is listed here only so the whole schema is in one place.
 -- A project owns everything in it, so every table after `projects` cascades when its project is deleted.
