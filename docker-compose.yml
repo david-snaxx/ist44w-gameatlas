@@ -3,6 +3,8 @@
 services:
   db:
     image: mysql:8.4
+    # Starts again by itself after a crash or a reboot, until `docker compose down`
+    restart: unless-stopped
     environment:
       MYSQL_RANDOM_ROOT_PASSWORD: "yes"
       MYSQL_DATABASE: gameatlas
@@ -22,6 +24,7 @@ services:
 
   app:
     build: .
+    restart: unless-stopped
     environment:
       DB_HOST: db
       # From a .env file next to this one, which only a public server needs (see the README). Without it this is
